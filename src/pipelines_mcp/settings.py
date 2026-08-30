@@ -89,25 +89,17 @@ def _aws_read(secret_id: str) -> str:
     exc_mod = importlib.import_module("botocore.exceptions")
     if not _is_exc(exc_mod):
         raise SettingsError(reason="botocore ClientError is missing")
-    last_error: BaseException | None = None
-    for profile in (AWS_PROFILE, None):
-        session = (
-            module.Session(region_name=AWS_REGION, profile_name=profile)
-            if profile is not None
-            else module.Session(region_name=AWS_REGION)
+    session = module.Session(region_name=AWS_REGION)
+    try:
+        response = session.client("secretsmanager").get_secret_value(
+            SecretId=secret_id
         )
-        try:
-            response = session.client("secretsmanager").get_secret_value(
-                SecretId=secret_id
-            )
-        except exc_mod.ClientError as exc:
-            last_error = exc
-            continue
-        secret = response.get("SecretString")
-        if secret is None or secret == "":
-            raise SettingsError(reason="secret is empty")
-        return secret
-    raise SettingsError(reason="secret read failed") from last_error
+    except exc_mod.ClientError as exc:
+        raise SettingsError(reason="secret read failed") from exc
+    secret = response.get("SecretString")
+    if secret is None or secret == "":
+        raise SettingsError(reason="secret is empty")
+    return secret
 
 
 def load_es_auth(*, read_secret: SecretReader | None = None) -> EsAuth:
