@@ -13,8 +13,10 @@ from pipelines_mcp.server_app import (
     App,
     get_app,
     get_k8s,
+    get_object_store,
     set_builder,
     set_k8s_factory,
+    set_object_store_factory,
     set_reauth,
     tool_boundary,
 )
@@ -80,6 +82,35 @@ async def test_get_app_does_not_check_sso() -> None:
         set_reauth(None)
         set_builder(None)
         await client.aclose()
+
+
+async def test_get_object_store_does_not_check_sso() -> None:
+    # Given: SSO login would fail
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def list_keys(self, prefix: str) -> tuple[str, ...]:
+            _ = prefix
+            return ()
+
+        def get_bytes(self, key: str) -> bytes:
+            _ = key
+            return b""
+
+    store = Store()
+    set_object_store_factory(lambda: store)
+
+    def reauth() -> None:
+        raise SsoLoginRequiredError(url=_URL)
+
+    set_reauth(reauth)
+    try:
+        # When: the object store is loaded
+        got = get_object_store()
+        # Then: the store is returned with no login error
+        assert got is store
+    finally:
+        set_reauth(None)
+        set_object_store_factory(None)
 
 
 async def test_get_k8s_rebuilds_after_sso_login_required() -> None:

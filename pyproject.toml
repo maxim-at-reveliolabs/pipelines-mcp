@@ -74,6 +74,10 @@ unfixable = []
 "src/pipelines_mcp/settings.py" = [
     "N803",     # boto3 Secrets Manager argument names
 ]
+"src/pipelines_mcp/object_store.py" = [
+    "N803",     # boto3 S3 argument names
+    "D102",     # Protocol stubs
+]
 "src/pipelines_mcp/settings_sso.py" = [
     "N802",     # boto3 Session factory name
     "N803",     # boto3 SSO argument names

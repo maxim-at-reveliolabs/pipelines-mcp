@@ -17,6 +17,7 @@ from pipelines_mcp.errors import (
 )
 from pipelines_mcp.k8s import K8s, K8sApiError, live_k8s
 from pipelines_mcp.logs import create_async_client
+from pipelines_mcp.object_store import LogStore, live_log_store
 from pipelines_mcp.redact import redact_text
 from pipelines_mcp.settings_sso import request_sso, sso_auth_expired
 
@@ -37,8 +38,10 @@ class _AppSlot:
 
     app: App | None = None
     k8s: K8s | None = None
+    object_store: LogStore | None = None
     builder: Callable[[], App] | None = None
     k8s_factory: Callable[[], K8s] | None = None
+    object_store_factory: Callable[[], LogStore] | None = None
     reauth: Callable[[], None] | None = None
 
 
@@ -50,6 +53,7 @@ def set_builder(builder: Callable[[], App] | None) -> None:
     _SLOT.builder = builder
     _SLOT.app = None
     _SLOT.k8s = None
+    _SLOT.object_store = None
 
 
 def set_k8s_factory(factory: Callable[[], K8s] | None) -> None:
@@ -58,20 +62,26 @@ def set_k8s_factory(factory: Callable[[], K8s] | None) -> None:
     _SLOT.k8s = None
 
 
+def set_object_store_factory(factory: Callable[[], LogStore] | None) -> None:
+    """Install the live object-store factory."""
+    _SLOT.object_store_factory = factory
+    _SLOT.object_store = None
+
+
 def set_reauth(reauth: Callable[[], None] | None) -> None:
-    """Install SSO login. Only cluster tools call it."""
+    """Install SSO login."""
     _SLOT.reauth = reauth
 
 
 def install_live() -> None:
-    """Install lazy log, cluster, and SSO factories. No live clients yet."""
+    """Install lazy log, cluster, object-store, and SSO factories."""
     set_builder(lambda: App(logs_client=create_async_client()))
     set_k8s_factory(live_k8s)
+    set_object_store_factory(live_log_store)
     set_reauth(request_sso)
 
 
 def _drop_clients() -> None:
-    _SLOT.app = None
     _SLOT.k8s = None
 
 
@@ -109,6 +119,18 @@ def get_k8s() -> K8s:
     k8s = factory()
     _SLOT.k8s = k8s
     return k8s
+
+
+def get_object_store() -> LogStore:
+    """Return the object store. Does not check SSO."""
+    if _SLOT.object_store is not None:
+        return _SLOT.object_store
+    factory = _SLOT.object_store_factory
+    if factory is None:
+        raise SettingsError(reason="timescaling logs not wired")
+    store = factory()
+    _SLOT.object_store = store
+    return store
 
 
 @asynccontextmanager

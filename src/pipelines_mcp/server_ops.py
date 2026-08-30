@@ -17,7 +17,11 @@ from pipelines_mcp.models import (
     StepIndex,
     job_name,
 )
-from pipelines_mcp.server_app import get_app, get_k8s
+from pipelines_mcp.server_app import get_app, get_k8s, get_object_store
+from pipelines_mcp.timescaling_logs import (
+    TimescalingLogRequest,
+    fetch_timescaling_logs,
+)
 
 _LIST_MAX: Final = 100
 
@@ -100,6 +104,27 @@ async def read_log(
         LogRequest(
             request_id=request_id,
             log_kind=log_kind,
+            cursor=cursor,
+            full=full,
+        ),
+    )
+
+
+async def read_timescaling_log(
+    client: str,
+    batchtime: str,
+    comptype: str,
+    cursor: str | None,
+    *,
+    full: bool,
+) -> LogPage:
+    """Read a timescaling model log page for one run."""
+    return await fetch_timescaling_logs(
+        get_object_store(),
+        TimescalingLogRequest(
+            client=client,
+            batchtime=batchtime,
+            comptype=comptype,
             cursor=cursor,
             full=full,
         ),

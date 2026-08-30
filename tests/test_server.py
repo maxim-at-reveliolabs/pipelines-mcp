@@ -19,6 +19,7 @@ _NAMES: Final[tuple[str, ...]] = (
     "get_pipeline_pod_config",
     "get_pipeline_log",
     "get_pipeline_service_log",
+    "get_timescaling_log",
 )
 
 _FORBIDDEN: Final[tuple[str, ...]] = (
@@ -32,7 +33,7 @@ _FORBIDDEN: Final[tuple[str, ...]] = (
 )
 
 
-async def test_lists_exactly_eight_tool_names() -> None:
+async def test_lists_exactly_nine_tool_names() -> None:
     tools = await mcp.list_tools()
     names = tuple(tool.name for tool in tools)
     assert names == _NAMES
@@ -40,8 +41,12 @@ async def test_lists_exactly_eight_tool_names() -> None:
 
 async def test_forbidden_infra_words_absent_from_names_and_descriptions() -> None:
     tools = await mcp.list_tools()
-    for tool in tools:
-        blob = f"{tool.name} {tool.description}".lower()
+    blobs = [f"{tool.name} {tool.description}".lower() for tool in tools]
+    assert mcp.instructions is not None
+    blobs.append(mcp.instructions.lower())
+    if mcp.description is not None:
+        blobs.append(mcp.description.lower())
+    for blob in blobs:
         for word in _FORBIDDEN:
             assert word not in blob
 

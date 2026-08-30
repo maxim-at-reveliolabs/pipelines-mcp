@@ -12,7 +12,12 @@ from pydantic import SecretStr, TypeAdapter
 from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import create_async_client
 from pipelines_mcp.server import mcp
-from pipelines_mcp.server_app import App, set_builder, set_k8s_factory
+from pipelines_mcp.server_app import (
+    App,
+    set_builder,
+    set_k8s_factory,
+    set_object_store_factory,
+)
 from pipelines_mcp.settings import EsAuth
 
 pytestmark = pytest.mark.anyio
@@ -163,6 +168,7 @@ async def _wired(
     finally:
         set_builder(None)
         set_k8s_factory(None)
+        set_object_store_factory(None)
         await client.aclose()
 
 
@@ -218,6 +224,39 @@ async def test_log_tool_filters_kind(
     assert "default_field" not in clause
     assert clause["query"] == query
     assert absent not in str(recorder.bodies[0])
+
+
+async def test_timescaling_log_tool_reads_store() -> None:
+    # Given: a rust-layout stderr file for the run
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def list_keys(self, prefix: str) -> tuple[str, ...]:
+            _ = prefix
+            return (
+                "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1/stderr",
+            )
+
+        def get_bytes(self, key: str) -> bytes:
+            _ = key
+            return b"gpu-fail\n"
+
+    set_object_store_factory(Store)
+    try:
+        # When: the timescaling log tool is called
+        result = await mcp.call_tool(
+            "get_timescaling_log",
+            {
+                "client": "acme",
+                "batchtime": "202608",
+                "comptype": "dashboard",
+            },
+        )
+    finally:
+        set_object_store_factory(None)
+
+    # Then: the stderr line is returned
+    value = _page_from_tool(result)
+    assert value["lines"] == ["gpu-fail"]
 
 
 def test_src_has_no_forbidden_cluster_apis() -> None:
