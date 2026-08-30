@@ -34,10 +34,38 @@ def test_redacts_credential_shaped_text(text: str, hidden: tuple[str, ...]) -> N
         assert part not in result
 
 
+@pytest.mark.parametrize(
+    ("text", "hidden", "kept"),
+    [
+        (
+            "- name: HARBOR_PASSWORD\n  value: harbor-secret-value\n",
+            "harbor-secret-value",
+            "HARBOR_PASSWORD",
+        ),
+        (
+            "- name: M2M_TOKEN\n  value: m2m-secret-value\n",
+            "m2m-secret-value",
+            "M2M_TOKEN",
+        ),
+    ],
+)
+def test_redacts_secret_env_yaml_value(text: str, hidden: str, kept: str) -> None:
+    # Given: job-config YAML with a secret env value
+    # When: the text is redacted
+    result = redact_text(text)
+    # Then: the value is gone and the env name remains
+    assert hidden not in result
+    assert _PLACEHOLDER in result
+    assert kept in result
+
+
 def test_leaves_ordinary_text_unchanged() -> None:
     assert redact_text("request-abc") == "request-abc"
     assert redact_text("pipeline step 0 completed") == "pipeline step 0 completed"
     assert redact_text("") == ""
+    assert redact_text("- name: CLIENT\n  value: acme\n") == (
+        "- name: CLIENT\n  value: acme\n"
+    )
 
 
 def test_redacts_each_match_when_patterns_overlap_in_one_string() -> None:
