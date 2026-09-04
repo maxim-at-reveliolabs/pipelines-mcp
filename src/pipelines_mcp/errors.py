@@ -30,13 +30,16 @@ class NotFoundError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class SsoLoginRequiredError(Exception):
-    """AWS SSO device login is in progress. The URL is for the human."""
+    """AWS SSO device login is in progress."""
 
     url: str
+    helper: bool = False
 
     @override
     def __str__(self) -> str:
-        """Ask the human to open the login URL, then retry."""
+        """Retry. Omit the URL when the helper has it."""
+        if self.helper:
+            return "AWS login started. Retry the same request."
         return (
             "AWS login required. Open this URL, then retry the same request: "
             f"{self.url}"

@@ -27,6 +27,9 @@ get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 
 list_pipeline_jobs is only to browse currently running jobs when the user did
 not give a request_id, GitHub URL, or Jenkins run.
+
+Cluster tools may start AWS login. If the tool says login started, retry the
+same request. Do not ask the human to open a URL unless the tool returned one.
 """.strip()
 
 mcp = MCPServer(

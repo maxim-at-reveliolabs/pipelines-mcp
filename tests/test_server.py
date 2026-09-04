@@ -74,6 +74,19 @@ async def test_tool_boundary_passes_sso_login_url_to_agent() -> None:
     assert url in str(caught.value)
 
 
+async def test_tool_boundary_hides_url_when_helper_has_it() -> None:
+    # Given: AWS login was handed to the helper
+    url = "https://device.sso.example.test/?user_code=ABCD-EFGH"
+
+    # When: the error crosses the tool boundary
+    with pytest.raises(ToolError, match="Retry the same request") as caught:
+        async with tool_boundary():
+            raise SsoLoginRequiredError(url=url, helper=True)
+
+    # Then: the agent does not see the login URL
+    assert url not in str(caught.value)
+
+
 async def test_tool_boundary_maps_cluster_api_error() -> None:
     # Given: the cluster API rejected the call
     # When: the error crosses the tool boundary

@@ -203,3 +203,57 @@ def test_request_sso_reuses_url_while_login_still_running() -> None:
 
     # Then: the same URL is returned without starting a new login
     assert caught.value.url == _URL
+
+
+def test_request_sso_sends_url_to_helper_without_announcing() -> None:
+    # Given: credentials do not work and the helper accepts the URL
+    oidc = FakeOidc(pending=0)
+    announced: list[str] = []
+    sent: list[str] = []
+
+    def send(url: str) -> bool:
+        sent.append(url)
+        return True
+
+    # When: requesting SSO
+    with pytest.raises(SsoLoginRequiredError) as caught:
+        request_sso(
+            "reveliolabs",
+            creds_ok=lambda: False,
+            load_portal=lambda _profile: _PORTAL,
+            oidc=oidc,
+            announce=announced.append,
+            send_url=send,
+            save_token=oidc.saved.__setitem__,
+            spawn=lambda _work: None,
+        )
+
+    # Then: the helper got the URL and the human did not
+    assert sent == [_URL]
+    assert announced == []
+    assert caught.value.helper is True
+    assert _URL not in str(caught.value)
+
+
+def test_request_sso_reuses_helper_handoff_without_url() -> None:
+    # Given: a login was already handed to the helper
+    oidc = FakeOidc(pending=0)
+    with pytest.raises(SsoLoginRequiredError):
+        request_sso(
+            "reveliolabs",
+            creds_ok=lambda: False,
+            load_portal=lambda _profile: _PORTAL,
+            oidc=oidc,
+            announce=lambda _url: None,
+            send_url=lambda _url: True,
+            save_token=oidc.saved.__setitem__,
+            spawn=lambda _work: None,
+        )
+
+    # When: requesting SSO again
+    with pytest.raises(SsoLoginRequiredError) as caught:
+        request_sso("reveliolabs", creds_ok=lambda: False)
+
+    # Then: retry with no login URL
+    assert caught.value.helper is True
+    assert _URL not in str(caught.value)

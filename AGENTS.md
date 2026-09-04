@@ -12,7 +12,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | Job/pod I/O | `k8s.py` |
 | Logs | `logs.py` |
 | Timescaling logs | `timescaling_logs.py`, `object_store.py` |
-| SSO device login | `settings_sso.py` |
+| SSO device login | `settings_sso.py`, `sso_url.py` |
 | EKS token | `eks_token.py` |
 | ES auth | `settings.py` |
 | Process wiring | `__main__.py`, `server_app.py` |
@@ -33,7 +33,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 
 - Frozen pydantic DTOs. Protocols for k8s clients. Inject fakes at the boundary.
 - No live clients at import. SSO (`reveliolabs` profile) is only for EKS. Other AWS calls use the default credential chain.
-- Domain errors go through `tool_boundary` to a redacted `ToolError`. The SSO login URL is for the human — do not redact it.
+- Domain errors go through `tool_boundary` to a redacted `ToolError`. If the helper on `127.0.0.1:18201` got the login, the error has no URL. If it did not, the URL is for the human — do not redact it.
 - Read-only. Do not add mutate/delete cluster tools.
 
 ## Commands

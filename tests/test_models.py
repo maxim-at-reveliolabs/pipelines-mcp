@@ -81,6 +81,10 @@ def test_enum_members(
             SsoLoginRequiredError(url="https://example.test/login"),
             "https://example.test/login",
         ),
+        (
+            SsoLoginRequiredError(url="https://example.test/login", helper=True),
+            "AWS login started. Retry the same request.",
+        ),
     ],
 )
 def test_domain_error_is_typed_dataclass_not_value_error(

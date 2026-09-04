@@ -1,4 +1,4 @@
-"""AWS IAM Identity Center device login. No AWS CLI."""
+"""AWS IAM Identity Center device login. Hands the URL to the local helper."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Protocol, TypeIs
 
 from pipelines_mcp.errors import SettingsError, SsoLoginRequiredError
 from pipelines_mcp.settings import AWS_PROFILE
+from pipelines_mcp.sso_url import send_sso_url
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -25,6 +26,7 @@ type CredsOk = Callable[[], bool]
 type LoadPortal = Callable[[str], SsoPortal]
 type IsPending = Callable[[BaseException], bool]
 type Spawn = Callable[[Callable[[], None]], None]
+type SendUrl = Callable[[str], bool]
 
 
 @dataclass(slots=True)
@@ -32,6 +34,7 @@ class _PendingLogin:
     """Holds the in-progress login URL. Mutation is the documented purpose."""
 
     url: str | None = None
+    helper: bool = False
 
 
 _PENDING = _PendingLogin()
@@ -150,6 +153,7 @@ def _device_login(
             payload["refreshToken"] = refresh
         save_token(cache_key, payload)
         _PENDING.url = None
+        _PENDING.helper = False
 
     return url, wait
 
@@ -165,29 +169,43 @@ def request_sso(
     save_token: SaveToken | None = None,
     is_pending: IsPending | None = None,
     spawn: Spawn | None = None,
+    send_url: SendUrl | None = None,
 ) -> None:
-    """Start SSO login in the background and raise with the URL for the agent."""
+    """Start SSO login in the background. The helper gets the URL when it is up."""
     ok = _live_creds_ok(profile) if creds_ok is None else creds_ok()
     if ok:
         _PENDING.url = None
+        _PENDING.helper = False
         return
     if _PENDING.url is not None:
-        raise SsoLoginRequiredError(url=_PENDING.url)
+        raise SsoLoginRequiredError(url=_PENDING.url, helper=_PENDING.helper)
     tell = _default_announce if announce is None else announce
+    send = send_sso_url if send_url is None else send_url
+    handed_off = False
+
+    def deliver(page: str) -> None:
+        nonlocal handed_off
+        if send(page):
+            handed_off = True
+            return
+        handed_off = False
+        tell(page)
+
     url, wait = _device_login(
         profile,
         load_portal=_live_load_portal if load_portal is None else load_portal,
         oidc=oidc,
         sleep=time.sleep if sleep is None else sleep,
-        announce=tell,
+        announce=deliver,
         save_token=_live_save_token if save_token is None else save_token,
         is_pending=_live_is_pending if is_pending is None else is_pending,
     )
-    tell(url)
+    deliver(url)
     _PENDING.url = url
+    _PENDING.helper = handed_off
     starter = _default_spawn if spawn is None else spawn
     starter(wait)
-    raise SsoLoginRequiredError(url=url)
+    raise SsoLoginRequiredError(url=url, helper=handed_off)
 
 
 def _default_announce(url: str) -> None:
