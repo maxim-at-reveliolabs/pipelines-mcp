@@ -177,26 +177,18 @@ class EksAuth:
 def eks_auth_from_settings(
     *,
     signer: PresignSigner | None = None,
-    cluster: CachedCluster | None = None,
+    cluster: CachedCluster,
     clock: Clock | None = None,
 ) -> EksAuth:
-    """Build EksAuth from the baked-in cluster.
-
-    Live AWS is used only for missing parts.
-    """
+    """Build EksAuth from a cluster and optional signer."""
     cluster_name = "dev"
     resolved_clock = time.monotonic if clock is None else clock
-    resolved_signer = signer
-    resolved_cluster = cluster
     keep_alive: _AwsSession | tuple[_AwsSession, _AwsClient] | None = None
-    if resolved_signer is None or resolved_cluster is None:
+    resolved_signer = signer
+    if resolved_signer is None:
         session = _boto_session()
-        keep_alive = session
-        if resolved_signer is None:
-            resolved_signer, sts = _sts_signer(session)
-            keep_alive = (session, sts)
-        if resolved_cluster is None:
-            resolved_cluster = _describe_cluster(session)
+        resolved_signer, sts = _sts_signer(session)
+        keep_alive = (session, sts)
     return EksAuth(
         TokenMint(
             cluster_name=cluster_name,
@@ -204,7 +196,7 @@ def eks_auth_from_settings(
             signer=resolved_signer,
             keep_alive=keep_alive,
         ),
-        resolved_cluster,
+        cluster,
         resolved_clock,
     )
 
@@ -215,19 +207,6 @@ def _has_ca_cert_data(config: KubeClientConfig) -> TypeIs[KubeClientConfigWithCa
 
 class _AwsHandle(Protocol):
     """Opaque AWS SDK object parsed at the import boundary."""
-
-
-class _CertificateAuthority(TypedDict):
-    data: str
-
-
-class _ClusterPayload(TypedDict):
-    endpoint: str
-    certificateAuthority: _CertificateAuthority
-
-
-class _DescribeClusterResponse(TypedDict):
-    cluster: _ClusterPayload
 
 
 class _AwsServiceModel(Protocol):
@@ -241,8 +220,6 @@ class _AwsMeta(Protocol):
 
 class _AwsClient(Protocol):
     meta: _AwsMeta
-
-    def describe_cluster(self, name: str) -> _DescribeClusterResponse: ...
 
 
 class _AwsSession(Protocol):
@@ -295,15 +272,3 @@ def _sts_signer(session: _AwsSession) -> tuple[PresignSigner, _AwsClient]:
         sts.meta.events,
     )
     return signer, sts
-
-
-def _describe_cluster(session: _AwsSession) -> CachedCluster:
-    eks = session.client("eks", region_name=None)
-    response = eks.describe_cluster(name="dev")
-    cluster = response["cluster"]
-    return CachedCluster(
-        endpoint=cluster["endpoint"],
-        ca_pem=base64.b64decode(cluster["certificateAuthority"]["data"]).decode(
-            "utf-8"
-        ),
-    )

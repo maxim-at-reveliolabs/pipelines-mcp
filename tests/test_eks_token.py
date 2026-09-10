@@ -218,3 +218,4 @@ def test_module_source_has_no_aws_eks_cli_or_get_caller_identity() -> None:
 
     assert "aws eks" not in source
     assert "get_caller_identity" not in source
+    assert "describe_cluster" not in source
