@@ -21,7 +21,6 @@ from pipelines_mcp.object_store import LogStore, live_log_store
 from pipelines_mcp.redact import redact_text
 from pipelines_mcp.settings_sso import request_sso, sso_auth_expired
 
-_NOT_FOUND: Final = "not found"
 _RETRY_LOGIN: Final = "AWS login required. Retry the same request."
 
 
@@ -142,7 +141,14 @@ async def tool_boundary() -> AsyncGenerator[None]:
         _drop_clients()
         raise ToolError(str(exc)) from exc
     except NotFoundError as exc:
-        raise ToolError(_NOT_FOUND) from exc
+        gone = " ".join(
+            (
+                f"{exc.entity} is gone from the cluster.",
+                "Finished jobs and pods are removed.",
+                "Use get_pipeline_log instead of job or pod state.",
+            )
+        )
+        raise ToolError(redact_text(gone)) from exc
     except (K8sApiError, InvalidCursorError, SettingsError, EmptyQueryError) as exc:
         raise ToolError(redact_text(str(exc))) from exc
     except Exception as exc:

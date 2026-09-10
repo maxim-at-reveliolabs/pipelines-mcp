@@ -3,7 +3,7 @@ from typing import Final
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from pipelines_mcp.errors import SsoLoginRequiredError
+from pipelines_mcp.errors import NotFoundError, SsoLoginRequiredError
 from pipelines_mcp.k8s import K8sApiError
 from pipelines_mcp.server import mcp
 from pipelines_mcp.server_app import tool_boundary
@@ -96,3 +96,16 @@ async def test_tool_boundary_maps_cluster_api_error() -> None:
 
     # Then: the agent sees a stable cluster error
     assert "403" in str(caught.value)
+
+
+async def test_tool_boundary_maps_gone_job_to_log_tools() -> None:
+    # Given: the job is no longer in the cluster
+    # When: that not-found crosses the tool boundary
+    with pytest.raises(ToolError, match="get_pipeline_log") as caught:
+        async with tool_boundary():
+            raise NotFoundError(entity="job")
+
+    # Then: the agent is told to use logs, not that the tool crashed
+    text = str(caught.value)
+    assert "job" in text
+    assert "cluster api" not in text

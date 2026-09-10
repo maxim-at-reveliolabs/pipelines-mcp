@@ -24,6 +24,8 @@ If the worker says the timescaling cluster failed: get_pipeline_job_config
 (step_index and replica are usually 0) for client, batchtime, and comptype,
 then get_timescaling_log.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
+If the job is gone from the cluster, that is expected after it finishes.
+Use the log tools instead.
 
 list_pipeline_jobs is only to browse currently running jobs when the user did
 not give a request_id, GitHub URL, or Jenkins run.
@@ -65,7 +67,8 @@ async def list_pipeline_jobs(
 @mcp.tool(
     description=(
         "Get one job by request_id UUID, step_index, and replica (usually 0). "
-        "Use only if you need job status; start with get_pipeline_log."
+        "Use only if you need job status; start with get_pipeline_log. "
+        "If the job is gone, use the log tools."
     )
 )
 async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Job:
@@ -92,7 +95,7 @@ async def list_pipeline_pods(
     description=(
         "Full YAML for one job by request_id, step_index, and replica. "
         "Secrets are redacted. Use to read client, batchtime, and comptype "
-        "before get_timescaling_log."
+        "before get_timescaling_log. If the job is gone, use the log tools."
     )
 )
 async def get_pipeline_job_config(
