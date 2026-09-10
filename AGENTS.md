@@ -25,6 +25,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 
 - AWS profile `reveliolabs`, region `us-east-2`
 - EKS cluster `dev`, namespace `pipelines-prd`
+- Live cluster client uses local kube config.
 - ES secret `elasticsearch/elastic`
 - Job name `pipelines-{request_id}-{step_index}-{replica}`
 - Timescaling logs: `{batchtime}/{client}/{comptype}/timescaling/logs/`, else `{batchtime}/logs/{client}_{batchtime}_{comptype}_replica_0/`, else without `_replica_0`

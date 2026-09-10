@@ -1,18 +1,19 @@
 """Read-only job and pod access over an injected kubernetes API."""
 
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from http import HTTPStatus
-from importlib import import_module
+from os import environ
 from typing import TYPE_CHECKING, Protocol, TypeIs, override
 
 import yaml
 from anyio.to_thread import run_sync
 from pydantic import TypeAdapter
 
-from pipelines_mcp.eks_token import KubeClientConfig, eks_auth_from_settings
 from pipelines_mcp.errors import NotFoundError, SettingsError
 from pipelines_mcp.models import (
     ContainerState,
@@ -25,11 +26,11 @@ from pipelines_mcp.models import (
     parse_job_name,
 )
 from pipelines_mcp.redact import redact_text
+from pipelines_mcp.settings import AWS_PROFILE
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
-    from types import ModuleType
 
 
 @dataclass(slots=True)
@@ -187,6 +188,14 @@ class CoreApi(Protocol):
     def read_namespaced_pod(self, name: str, namespace: str) -> PodView: ...
 
 
+def _is_batch(api: object) -> TypeIs[BatchApi]:
+    return hasattr(api, "read_namespaced_job") and hasattr(api, "list_namespaced_job")
+
+
+def _is_core(api: object) -> TypeIs[CoreApi]:
+    return hasattr(api, "read_namespaced_pod") and hasattr(api, "list_namespaced_pod")
+
+
 def _found[T](read: Callable[[], T]) -> T | None:
     try:
         return read()
@@ -297,27 +306,14 @@ type _YamlValue = _YamlAtom | list[_YamlValue] | dict[str, _YamlValue]
 _YAML_MAP: TypeAdapter[dict[str, _YamlValue]] = TypeAdapter(dict[str, _YamlValue])
 
 
-class _ApiClient(Protocol):
-    def sanitize_for_serialization(
-        self, obj: JobView | PodView
-    ) -> dict[str, _YamlValue]:
-        """Turn a cluster object into API-field JSON data."""
-        ...
-
-
-def _is_api_client(value: object) -> TypeIs[_ApiClient]:
-    return hasattr(value, "sanitize_for_serialization")
-
-
 def _config_payload(raw: JobView | PodView) -> dict[str, _YamlValue]:
     if hasattr(raw, "openapi_types") and hasattr(raw, "attribute_map"):
-        kube = import_module("kubernetes.client")
-        ctor = getattr(kube, "ApiClient", None)
-        if callable(ctor):
-            client = ctor()
-            if _is_api_client(client):
-                serialized = client.sanitize_for_serialization(raw)
-                return _YAML_MAP.validate_json(json.dumps(serialized, default=str))
+        from kubernetes.client import ApiClient  # noqa: PLC0415  # load on use
+
+        dumped = json.dumps(
+            ApiClient().sanitize_for_serialization(raw), default=str
+        )
+        return _YAML_MAP.validate_json(dumped)
     to_dict = getattr(raw, "to_dict", None)
     if not callable(to_dict):
         return {}
@@ -502,42 +498,24 @@ class _LiveCore:
         )
 
 
-class _KubeApiClient(Protocol):
-    """Opaque kubernetes API client handle."""
-
-
-class _KubeMod(Protocol):
-    Configuration: Callable[[], KubeClientConfig]
-    ApiClient: Callable[..., _KubeApiClient]
-    BatchV1Api: Callable[..., BatchApi]
-    CoreV1Api: Callable[..., CoreApi]
-
-
-class _ExcMod(Protocol):
-    ApiException: type[BaseException]
-
-
-def _is_kube(module: ModuleType | _KubeMod) -> TypeIs[_KubeMod]:
-    return hasattr(module, "Configuration") and hasattr(module, "BatchV1Api")
-
-
-def _is_exc(module: ModuleType | _ExcMod) -> TypeIs[_ExcMod]:
-    return hasattr(module, "ApiException")
-
-
 def live_k8s() -> K8s:
-    """Build a live cluster client from the baked-in EKS auth."""
-    kube = import_module("kubernetes.client")
-    if not _is_kube(kube):
-        raise SettingsError(reason="kubernetes client is missing")
-    exc_mod = import_module("kubernetes.client.exceptions")
-    if not _is_exc(exc_mod):
-        raise SettingsError(reason="kubernetes ApiException is missing")
-    config = kube.Configuration()
-    eks_auth_from_settings().bind(config)
-    api_client = kube.ApiClient(configuration=config)
-    error_type = exc_mod.ApiException
+    """Build a live cluster client from local kube config."""
+    from kubernetes.client import (  # noqa: PLC0415  # load on use
+        ApiException,
+        BatchV1Api,
+        CoreV1Api,
+    )
+    from kubernetes.config import new_client_from_config  # noqa: PLC0415  # load on use
+
+    environ["AWS_PROFILE"] = AWS_PROFILE
+    api_client = new_client_from_config(persist_config=False)
+    batch = BatchV1Api(api_client)
+    core = CoreV1Api(api_client)
+    if not _is_batch(batch):
+        raise SettingsError(reason="batch api is missing")
+    if not _is_core(core):
+        raise SettingsError(reason="core api is missing")
     return K8s(
-        batch=_LiveBatch(kube.BatchV1Api(api_client), error_type),
-        core=_LiveCore(kube.CoreV1Api(api_client), error_type),
+        batch=_LiveBatch(batch, ApiException),
+        core=_LiveCore(core, ApiException),
     )
