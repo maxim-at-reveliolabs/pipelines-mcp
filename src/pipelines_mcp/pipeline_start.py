@@ -1,0 +1,33 @@
+"""Parse the service line that starts a pipeline job."""
+
+from collections.abc import Sequence
+
+from pydantic import TypeAdapter, ValidationError
+
+from pipelines_mcp.errors import PipelineStartError
+from pipelines_mcp.models import PipelineStart
+
+
+def parse_start(lines: Sequence[str]) -> PipelineStart:
+    """Return start-line keys. arguments stays the original JSON string."""
+    for line in lines:
+        if "[k8s-client] starting pipeline" not in line:
+            continue
+        try:
+            payload = TypeAdapter(dict[str, str]).validate_json(line)
+            return PipelineStart(
+                timestamp=payload["@timestamp"],
+                job_name=payload["job-name"],
+                image_name=payload["image-name"],
+                container_name=payload["container-name"],
+                namespace=payload["namespace"],
+                arguments=payload["arguments"],
+                pipeline_id=payload["pipeline-id"],
+            )
+        except (ValidationError, KeyError) as err:
+            raise PipelineStartError(
+                reason="starting pipeline line is not valid"
+            ) from err
+    raise PipelineStartError(
+        reason="No starting pipeline line yet. Retry after the service queues the job."
+    )

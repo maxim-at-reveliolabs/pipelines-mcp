@@ -99,3 +99,16 @@ class ObjectConfig(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     name: str
     config: str
+
+
+class PipelineStart(BaseModel):
+    """Keys from the service line that starts the job."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    timestamp: str
+    job_name: str
+    image_name: str
+    container_name: str
+    namespace: str
+    arguments: str
+    pipeline_id: str

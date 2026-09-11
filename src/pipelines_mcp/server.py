@@ -5,7 +5,14 @@ from typing import Final
 from mcp.server import MCPServer
 
 from pipelines_mcp import server_ops as ops
-from pipelines_mcp.models import Job, LogKind, LogPage, ObjectConfig, Pod
+from pipelines_mcp.models import (
+    Job,
+    LogKind,
+    LogPage,
+    ObjectConfig,
+    PipelineStart,
+    Pod,
+)
 from pipelines_mcp.server_app import tool_boundary
 
 _INSTRUCTIONS: Final = """
@@ -20,6 +27,11 @@ pipeline id.
 
 If the user already gave a request_id UUID, call get_pipeline_log next. Also
 get_pipeline_service_log for the service that launched the worker.
+get_pipeline_start returns the keys from the service line that starts the
+job. arguments stays the original JSON string. As part of troubleshooting,
+parse arguments and check that this config JSON is valid and uses the
+latest versions and schema, unless the run intentionally pinned something
+else.
 If the worker says the timescaling cluster failed: get_pipeline_job_config
 (step_index and replica are usually 0) for client, batchtime, and comptype,
 then get_timescaling_log.
@@ -153,6 +165,19 @@ async def get_pipeline_service_log(
     """Read service logs for a request."""
     async with tool_boundary():
         return await ops.read_log(request_id, LogKind.SERVICE, cursor, full=full)
+
+
+@mcp.tool(
+    description=(
+        "Keys from the service line that starts the job for a request_id UUID. "
+        "arguments stays the original JSON string. Use when the job is gone "
+        "and you need those keys. Retry if the line is not there yet."
+    )
+)
+async def get_pipeline_start(request_id: str) -> PipelineStart:
+    """Read start-line keys for a request."""
+    async with tool_boundary():
+        return await ops.read_start(request_id)
 
 
 @mcp.tool(

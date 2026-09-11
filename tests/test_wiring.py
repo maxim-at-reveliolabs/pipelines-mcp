@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -6,6 +7,7 @@ from typing import Final, NoReturn
 
 import httpx2
 import pytest
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, InputRequiredResult
 from pydantic import SecretStr, TypeAdapter
 
@@ -224,6 +226,47 @@ async def test_log_tool_filters_kind(
     assert "default_field" not in clause
     assert clause["query"] == query
     assert absent not in str(recorder.bodies[0])
+
+
+async def test_get_pipeline_start_returns_keys_and_leaves_arguments_intact() -> None:
+    # Given: a service start line whose arguments are a JSON string
+    arguments = '{ "batchtime": "202608", "client": "isaca" }'
+    line = json.dumps(
+        {
+            "@timestamp": "2026-09-11T03:11:01Z",
+            "message": "[k8s-client] starting pipeline",
+            "job-name": "pipelines-req-0-0",
+            "image-name": "pipelines-rust:v1.1.1",
+            "container-name": "pipelines-rust",
+            "namespace": "pipelines-prd",
+            "arguments": arguments,
+            "pipeline-id": "req",
+        }
+    )
+    hits: list[dict[str, JsonValue]] = [{"_source": {"log": line}, "sort": ["t1"]}]
+
+    # When: get_pipeline_start is called through the MCP tool
+    async with _wired(hits=hits) as recorder:
+        result = await mcp.call_tool("get_pipeline_start", {"request_id": "req"})
+
+    # Then: arguments is unchanged and the first log lines are read
+    value = _page_from_tool(result)
+    assert value["job_name"] == "pipelines-req-0-0"
+    assert value["arguments"] == arguments
+    assert recorder.bodies[0]["size"] == 20
+
+
+async def test_get_pipeline_start_raises_when_line_is_missing() -> None:
+    # Given: service logs with no start line
+    hits: list[dict[str, JsonValue]] = [
+        {"_source": {"log": "queued"}, "sort": ["t1"]},
+    ]
+
+    # When: the start tool runs
+    # Then: the tool returns a typed error
+    async with _wired(hits=hits):
+        with pytest.raises(ToolError, match="No starting pipeline line"):
+            _ = await mcp.call_tool("get_pipeline_start", {"request_id": "req"})
 
 
 async def test_timescaling_log_tool_reads_store() -> None:

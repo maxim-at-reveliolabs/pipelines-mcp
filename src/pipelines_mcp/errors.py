@@ -66,3 +66,15 @@ class EmptyQueryError(Exception):
     def __str__(self) -> str:
         """Return a stable empty-field message."""
         return f"empty {self.field}"
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineStartError(Exception):
+    """The service line that starts the job is missing or not valid."""
+
+    reason: str
+
+    @override
+    def __str__(self) -> str:
+        """Return the start-line failure reason."""
+        return self.reason

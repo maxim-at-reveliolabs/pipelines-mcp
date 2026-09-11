@@ -11,6 +11,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | New tool | `server.py` (decorator) + `server_ops.py` (call) |
 | Job/pod I/O | `k8s.py` |
 | Logs | `logs.py` |
+| Start line keys | `pipeline_start.py` |
 | Timescaling logs | `timescaling_logs.py`, `object_store.py` |
 | SSO device login | `settings_sso.py`, `sso_url.py` |
 | EKS token | `eks_token.py` |

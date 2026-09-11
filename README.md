@@ -16,6 +16,7 @@ It talks to the `dev` EKS cluster (`pipelines-prd` namespace) and the log store.
 | `get_pipeline_pod_config` | Full pod YAML. Secrets stripped. |
 | `get_pipeline_log` | Worker logs for a request. Last 100 lines plus a cursor. |
 | `get_pipeline_service_log` | Service logs. Same cursor rules. |
+| `get_pipeline_start` | Keys from the service line that starts the job. `arguments` stays the original JSON string. |
 | `get_timescaling_log` | Timescaling logs when the worker says the cluster failed. Pass client, batchtime, comptype from the job config. |
 
 Job names look like `pipelines-{request_id}-{step_index}-{replica}`.

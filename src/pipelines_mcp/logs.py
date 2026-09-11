@@ -81,6 +81,7 @@ class LogRequest:
     log_kind: LogKind
     cursor: str | None = None
     full: bool = False
+    size: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,7 +286,7 @@ async def fetch_logs(
             size = _TAIL_LINES
         case LogMode.FULL:
             order = "asc"
-            size = _FULL_MAX_HITS
+            size = _FULL_MAX_HITS if normalized.size is None else normalized.size
     content = json.dumps(
         _search_body(
             normalized,

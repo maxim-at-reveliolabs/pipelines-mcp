@@ -10,6 +10,7 @@ from pipelines_mcp.models import (
     LogKind,
     LogPage,
     ObjectConfig,
+    PipelineStart,
     Pod,
     PodName,
     Replica,
@@ -17,6 +18,7 @@ from pipelines_mcp.models import (
     StepIndex,
     job_name,
 )
+from pipelines_mcp.pipeline_start import parse_start
 from pipelines_mcp.server_app import get_app, get_k8s, get_object_store
 from pipelines_mcp.timescaling_logs import (
     TimescalingLogRequest,
@@ -24,6 +26,7 @@ from pipelines_mcp.timescaling_logs import (
 )
 
 _LIST_MAX: Final = 100
+_START_LINES: Final = 20
 
 
 def _nonempty(raw: str, field: str) -> str:
@@ -108,6 +111,20 @@ async def read_log(
             full=full,
         ),
     )
+
+
+async def read_start(request_id: str) -> PipelineStart:
+    """Read the start-line keys for a request."""
+    page = await fetch_logs(
+        get_app().logs_client,
+        LogRequest(
+            request_id=request_id,
+            log_kind=LogKind.SERVICE,
+            full=True,
+            size=_START_LINES,
+        ),
+    )
+    return parse_start(page.lines)
 
 
 async def read_timescaling_log(

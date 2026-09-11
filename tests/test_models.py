@@ -1,3 +1,4 @@
+import json
 from dataclasses import is_dataclass
 
 import pytest
@@ -6,6 +7,7 @@ from pipelines_mcp.errors import (
     EmptyQueryError,
     InvalidCursorError,
     NotFoundError,
+    PipelineStartError,
     SettingsError,
     SsoLoginRequiredError,
 )
@@ -16,6 +18,7 @@ from pipelines_mcp.models import (
     LogKind,
     LogPage,
     ObjectConfig,
+    PipelineStart,
     Pod,
     Replica,
     RequestId,
@@ -24,7 +27,9 @@ from pipelines_mcp.models import (
     parse_job_name,
 )
 
-type _DtoClass = type[Job | Pod | LogPage | ContainerStatus | ObjectConfig]
+type _DtoClass = type[
+    Job | Pod | LogPage | ContainerStatus | ObjectConfig | PipelineStart
+]
 
 
 @pytest.mark.parametrize(
@@ -47,6 +52,18 @@ type _DtoClass = type[Job | Pod | LogPage | ContainerStatus | ObjectConfig]
         (LogPage, ("lines", "cursor", "truncated", "note")),
         (ContainerStatus, ("name", "state", "ready")),
         (ObjectConfig, ("name", "config")),
+        (
+            PipelineStart,
+            (
+                "timestamp",
+                "job_name",
+                "image_name",
+                "container_name",
+                "namespace",
+                "arguments",
+                "pipeline_id",
+            ),
+        ),
     ],
 )
 def test_dto_field_names(cls: _DtoClass, names: tuple[str, ...]) -> None:
@@ -54,6 +71,14 @@ def test_dto_field_names(cls: _DtoClass, names: tuple[str, ...]) -> None:
     assert "spec" not in names
     for item in cls.model_fields.values():
         assert "dict" not in str(item.annotation)
+
+
+def test_pipeline_start_json_schema_uses_field_names() -> None:
+    dumped = json.dumps(PipelineStart.model_json_schema())
+    assert '"timestamp"' in dumped
+    assert '"job_name"' in dumped
+    assert '"@timestamp"' not in dumped
+    assert '"job-name"' not in dumped
 
 
 @pytest.mark.parametrize(
@@ -84,6 +109,10 @@ def test_enum_members(
         (
             SsoLoginRequiredError(url="https://example.test/login", helper=True),
             "AWS login started. Retry the same request.",
+        ),
+        (
+            PipelineStartError(reason="No starting pipeline line yet."),
+            "No starting pipeline line yet.",
         ),
     ],
 )
