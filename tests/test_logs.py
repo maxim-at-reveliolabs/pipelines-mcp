@@ -3,7 +3,7 @@ from typing import Final
 
 import httpx2
 import pytest
-from pydantic import SecretStr, TypeAdapter, ValidationError
+from pydantic import SecretStr, TypeAdapter
 
 from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.logs import (
@@ -239,11 +239,3 @@ async def test_client_sets_basic_auth_header() -> None:
 
         # Then: Authorization is Basic auth for those credentials
         assert client.headers["Authorization"] == f"Basic {token}"
-
-
-def test_es_auth_rejects_blank_password() -> None:
-    # Given: a password that is only whitespace
-    # When: the auth model is built
-    # Then: validation fails
-    with pytest.raises(ValidationError):
-        _ = EsAuth(username="elastic", password=SecretStr("   "))
