@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from functools import wraps
+from inspect import cleandoc
 
 from anyio.to_thread import run_sync
 from mcp.server import MCPServer
@@ -65,19 +66,14 @@ same request. Do not ask the human to open a URL unless the tool returned one.
 )
 
 
-def _tool[**P, R](
-    *,
-    description: str,
-) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-    def register(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        @wraps(fn)
-        async def bound(*args: P.args, **kwargs: P.kwargs) -> R:
-            async with tool_boundary():
-                return await fn(*args, **kwargs)
+def _tool[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    @wraps(fn)
+    async def bound(*args: P.args, **kwargs: P.kwargs) -> R:
+        async with tool_boundary():
+            return await fn(*args, **kwargs)
 
-        return mcp.tool(description=description)(bound)
-
-    return register
+    description = None if fn.__doc__ is None else cleandoc(fn.__doc__)
+    return mcp.tool(description=description)(bound)
 
 
 def _nonempty(raw: str, field: str) -> str:
@@ -91,22 +87,20 @@ def _job_name(request_id: str, step_index: int, replica: int) -> str:
     return job_name(_nonempty(request_id, "request_id"), step_index, replica)
 
 
-@_tool(
-    description=(
-        "List currently running or recent jobs. Do not use this when the user "
-        "gave a request_id UUID, GitHub URL, or Jenkins run; fetch the CI log "
-        "if needed, then call get_pipeline_log. Optional filters: status "
-        "(Active, Complete, Failed, Pending, or running), request_id, limit "
-        "(default 50, max 100). Job names are "
-        "pipelines-{request_id}-{step_index}-{replica}."
-    )
-)
+@_tool
 async def list_pipeline_jobs(
     status: str | None = None,
     request_id: str | None = None,
     limit: int = 50,
 ) -> tuple[Job, ...]:
-    """List jobs with optional status and request filters."""
+    """List currently running or recent jobs.
+
+    Do not use this when the user gave a request_id UUID, GitHub URL, or Jenkins
+    run; fetch the CI log if needed, then call get_pipeline_log. Optional
+    filters: status (Active, Complete, Failed, Pending, or running),
+    request_id, limit (default 50, max 100). Job names are
+    pipelines-{request_id}-{step_index}-{replica}.
+    """
     stripped_id = "" if request_id is None else request_id.strip()
     prefix = None if stripped_id == "" else f"pipelines-{stripped_id}"
     stripped_status = "" if status is None else status.strip()
@@ -121,77 +115,70 @@ async def list_pipeline_jobs(
     )
 
 
-@_tool(
-    description=(
-        "Get one job by request_id UUID, step_index, and replica (usually 0). "
-        "Use only if you need job status; start with get_pipeline_log. "
-        "If the job is gone, use the log tools."
-    )
-)
+@_tool
 async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Job:
-    """Get one job by request, step, and replica."""
+    """Get one job by request_id UUID, step_index, and replica (usually 0).
+
+    Use only if you need job status; start with get_pipeline_log. If the job is
+    gone, use the log tools.
+    """
     return await run_sync(get_k8s().get_job, _job_name(request_id, step_index, replica))
 
 
-@_tool(
-    description=(
-        "List live pods for one job. Empty if they are already gone. Use for "
-        "pod state; use log tools for the failure reason."
-    )
-)
+@_tool
 async def list_pipeline_pods(
     request_id: str, step_index: int, replica: int
 ) -> tuple[Pod, ...]:
-    """List pods for one job."""
+    """List live pods for one job.
+
+    Empty if they are already gone. Use for pod state; use log tools for the
+    failure reason.
+    """
     return await run_sync(
         get_k8s().list_pods, _job_name(request_id, step_index, replica)
     )
 
 
-@_tool(
-    description=(
-        "Full YAML for one job by request_id, step_index, and replica. "
-        "Secrets are redacted. Use to read client, batchtime, and comptype "
-        "before get_timescaling_log. If the job is gone, use the log tools."
-    )
-)
+@_tool
 async def get_pipeline_job_config(
     request_id: str, step_index: int, replica: int
 ) -> ObjectConfig:
-    """Get the full redacted config for one job."""
+    """Full YAML for one job by request_id, step_index, and replica.
+
+    Secrets are redacted. Use to read client, batchtime, and comptype before
+    get_timescaling_log. If the job is gone, use the log tools.
+    """
     return await run_sync(
         get_k8s().job_config, _job_name(request_id, step_index, replica)
     )
 
 
-@_tool(description="Get one pod by pod_name from list_pipeline_pods.")
+@_tool
 async def get_pipeline_pod(pod_name: str) -> Pod:
-    """Get one pod by name."""
+    """Get one pod by pod_name from list_pipeline_pods."""
     return await run_sync(get_k8s().get_pod, _nonempty(pod_name, "pod_name"))
 
 
-@_tool(description="Full YAML for one pod by pod_name. Secrets are redacted.")
+@_tool
 async def get_pipeline_pod_config(pod_name: str) -> ObjectConfig:
-    """Get the full redacted config for one pod."""
+    """Full YAML for one pod by pod_name. Secrets are redacted."""
     return await run_sync(
         get_k8s().pod_config, _nonempty(pod_name, "pod_name")
     )
 
 
-@_tool(
-    description=(
-        "Worker logs for a request_id UUID. Empty until the worker is running. "
-        "Default is the last 100 lines plus a cursor. Pass cursor to get only "
-        "new lines. full=true still caps size."
-    )
-)
+@_tool
 async def get_pipeline_log(
     request_id: str,
     cursor: str | None = None,
     *,
     full: bool = False,
 ) -> LogPage:
-    """Read pipeline logs for a request."""
+    """Worker logs for a request_id UUID.
+
+    Empty until the worker is running. Default is the last 100 lines plus a
+    cursor. Pass cursor to get only new lines. full=true still caps size.
+    """
     query = _nonempty(request_id, "request_id")
     return await fetch_logs(
         get_logs_client(),
@@ -204,19 +191,17 @@ async def get_pipeline_log(
     )
 
 
-@_tool(
-    description=(
-        "Service logs for the same request_id UUID. Use with worker logs. "
-        "Same cursor rules as get_pipeline_log."
-    )
-)
+@_tool
 async def get_pipeline_service_log(
     request_id: str,
     cursor: str | None = None,
     *,
     full: bool = False,
 ) -> LogPage:
-    """Read service logs for a request."""
+    """Service logs for the same request_id UUID.
+
+    Use with worker logs. Same cursor rules as get_pipeline_log.
+    """
     query = _nonempty(request_id, "request_id")
     return await fetch_logs(
         get_logs_client(),
@@ -229,15 +214,13 @@ async def get_pipeline_service_log(
     )
 
 
-@_tool(
-    description=(
-        "Keys from the service line that starts the job for a request_id UUID. "
-        "arguments stays the original JSON string. Use when the job is gone "
-        "and you need those keys. Retry if the line is not there yet."
-    )
-)
+@_tool
 async def get_pipeline_start(request_id: str) -> PipelineStart:
-    """Read start-line keys for a request."""
+    """Keys from the service line that starts the job for a request_id UUID.
+
+    arguments stays the original JSON string. Use when the job is gone and you
+    need those keys. Retry if the line is not there yet.
+    """
     query = _nonempty(request_id, "request_id")
     page = await fetch_logs(
         get_logs_client(),
@@ -251,14 +234,7 @@ async def get_pipeline_start(request_id: str) -> PipelineStart:
     return parse_start(page.lines)
 
 
-@_tool(
-    description=(
-        "Timescaling model logs. Use only when worker logs say the cluster "
-        "failed. Pass client, batchtime, and comptype from "
-        "get_pipeline_job_config. Empty until the model writes logs. Same "
-        "cursor rules as get_pipeline_log."
-    )
-)
+@_tool
 async def get_timescaling_log(
     client: str,
     batchtime: str,
@@ -267,7 +243,12 @@ async def get_timescaling_log(
     *,
     full: bool = False,
 ) -> LogPage:
-    """Read timescaling model logs for a run."""
+    """Timescaling model logs.
+
+    Use only when worker logs say the cluster failed. Pass client, batchtime,
+    and comptype from get_pipeline_job_config. Empty until the model writes
+    logs. Same cursor rules as get_pipeline_log.
+    """
     return await fetch_timescaling_logs(
         get_object_store(),
         TimescalingLogRequest(
