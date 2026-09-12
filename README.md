@@ -4,23 +4,6 @@ Read-only MCP server for pipeline jobs, pods, configs, and logs.
 
 It talks to the `dev` EKS cluster (`pipelines-prd` namespace) and the log store. Region `us-east-2`. SSO profile `reveliolabs` is only for EKS.
 
-## Tools
-
-| Tool | What it does |
-|------|----------------|
-| `list_pipeline_jobs` | Browse running or recent jobs. Skip if the user gave a request_id, GitHub URL, or Jenkins run. |
-| `get_pipeline_job` | One job by request id, step index, replica. |
-| `list_pipeline_pods` | Pods for that job. Empty if they are already gone. |
-| `get_pipeline_job_config` | Full job YAML. Secrets stripped. |
-| `get_pipeline_pod` | One pod by name. |
-| `get_pipeline_pod_config` | Full pod YAML. Secrets stripped. |
-| `get_pipeline_log` | Worker logs for a request. Last 100 lines plus a cursor. |
-| `get_pipeline_service_log` | Service logs. Same cursor rules. |
-| `get_pipeline_start` | Keys from the service line that starts the job. `arguments` stays the original JSON string. |
-| `get_timescaling_log` | Timescaling logs when the worker says the cluster failed. Pass client, batchtime, comptype from the job config. |
-
-Job names look like `pipelines-{request_id}-{step_index}-{replica}`.
-
 ## Run
 
 Needs Python 3.13 and [uv](https://docs.astral.sh/uv/). Cluster tools need AWS SSO for the `reveliolabs` profile.

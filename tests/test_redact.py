@@ -50,10 +50,7 @@ def test_redacts_credential_shaped_text(text: str, hidden: tuple[str, ...]) -> N
     ],
 )
 def test_redacts_secret_env_yaml_value(text: str, hidden: str, kept: str) -> None:
-    # Given: job-config YAML with a secret env value
-    # When: the text is redacted
     result = redact_text(text)
-    # Then: the value is gone and the env name remains
     assert hidden not in result
     assert _PLACEHOLDER in result
     assert kept in result

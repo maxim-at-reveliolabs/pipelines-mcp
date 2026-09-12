@@ -40,8 +40,6 @@ _DEV_API = "C9E48999FC8319AC0A1A8EC23AE236FF.gr7.us-east-2.eks.amazonaws.com"
 
 @dataclass(frozen=True, slots=True)
 class FakeSigner:
-    """Records presign URL and headers. Mutation is the recorded calls."""
-
     url: str = _PRESIGNED
     calls: list[PresignRequest] = field(default_factory=list)
     expires: list[int] = field(default_factory=list)
@@ -64,8 +62,6 @@ class FakeSigner:
 
 @dataclass(slots=True)
 class FakeClock:
-    """Injected clock. Mutation is the current time."""
-
     now_value: float = 0.0
 
     def now(self) -> float:
@@ -77,8 +73,6 @@ class FakeClock:
 
 @dataclass(slots=True)
 class FakeKubeConfig:
-    """kubernetes Configuration stand-in. Mutation is the client contract."""
-
     host: str = ""
     api_key: dict[str, str] = field(default_factory=dict)
     api_key_prefix: dict[str, str] = field(default_factory=dict)

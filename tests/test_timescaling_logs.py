@@ -12,8 +12,6 @@ from pipelines_mcp.timescaling_logs import (
 
 @dataclass(slots=True)
 class FakeStore:
-    """In-memory log objects. Mutation is the documented purpose."""
-
     objects: dict[str, bytes]
     prefixes: list[str] = field(default_factory=list)
 
@@ -49,17 +47,12 @@ def _line_store(count: int) -> FakeStore:
 
 
 def test_lists_rust_prefix() -> None:
-    # Given: a rust-layout stderr file for the run
     key = (
         "202608/acme/dashboard/timescaling/logs/timescaling-acme-dashboard-202608"
         "/j-ABC/steps/s-1/stderr"
     )
     store = FakeStore(objects={key: b"gpu-ok\n"})
-
-    # When: the first tail page is fetched
     page = fetch_timescaling_logs(store, _request())
-
-    # Then: the rust prefix is listed and the line is returned
     assert store.prefixes[0] == "202608/acme/dashboard/timescaling/logs/"
     assert page.lines == ("gpu-ok",)
     assert page.truncated is False
@@ -67,14 +60,9 @@ def test_lists_rust_prefix() -> None:
 
 
 def test_falls_back_to_legacy_prefix_when_rust_empty() -> None:
-    # Given: only the legacy Go log layout has files
     key = "202608/logs/acme_202608_dashboard/j-ABC/steps/s-1/stderr"
     store = FakeStore(objects={key: b"legacy-ok\n"})
-
-    # When: the first tail page is fetched
     page = fetch_timescaling_logs(store, _request())
-
-    # Then: rust is tried first, then the legacy prefix, and the line is returned
     assert store.prefixes == [
         "202608/acme/dashboard/timescaling/logs/",
         "202608/logs/acme_202608_dashboard_replica_0/",
@@ -84,17 +72,12 @@ def test_falls_back_to_legacy_prefix_when_rust_empty() -> None:
 
 
 def test_falls_back_to_legacy_replica_prefix_when_rust_empty() -> None:
-    # Given: only the Go replica log layout has files
     key = (
         "202608/logs/acme_202608_dashboard_replica_0/"
         "j-ABC/node/i-1/bootstrap-actions/1/stderr.gz"
     )
     store = FakeStore(objects={key: compress(b"glacier\n")})
-
-    # When: the first tail page is fetched
     page = fetch_timescaling_logs(store, _request())
-
-    # Then: rust then the replica prefix, and the bootstrap stderr line is returned
     assert store.prefixes == [
         "202608/acme/dashboard/timescaling/logs/",
         "202608/logs/acme_202608_dashboard_replica_0/",
@@ -103,7 +86,6 @@ def test_falls_back_to_legacy_replica_prefix_when_rust_empty() -> None:
 
 
 def test_prefers_stderr_in_each_step_dir() -> None:
-    # Given: one step with stderr and stdout
     base = "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1"
     store = FakeStore(
         objects={
@@ -111,58 +93,42 @@ def test_prefers_stderr_in_each_step_dir() -> None:
             f"{base}/stderr": b"err\n",
         }
     )
-
-    # When: logs are fetched
     page = fetch_timescaling_logs(store, _request())
-
-    # Then: only stderr from that step is used
     assert page.lines == ("err",)
 
 
 def test_gunzips_preferred_file() -> None:
-    # Given: a gzipped stderr file
     key = "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1/stderr.gz"
     store = FakeStore(objects={key: compress(b"zipped\n")})
-
-    # When: logs are fetched
     page = fetch_timescaling_logs(store, _request())
-
-    # Then: the decoded line is returned
     assert page.lines == ("zipped",)
 
 
 def test_tail_keeps_last_hundred_chronological_lines() -> None:
-    # Given: 120 stderr lines
     store = _line_store(120)
-
-    # When: the first tail page is fetched
     page = fetch_timescaling_logs(store, _request())
-
-    # Then: the last 100 lines are kept in order
     assert page.lines == tuple(f"line-{index}" for index in range(20, 120))
     assert page.truncated is True
 
 
-def test_full_keeps_lines_from_the_start() -> None:
-    # Given: 120 stderr lines
+def test_tail_follow_up_empty_when_no_new_lines() -> None:
     store = _line_store(120)
+    first = fetch_timescaling_logs(store, _request())
+    second = fetch_timescaling_logs(store, _request(cursor=first.cursor))
+    assert second.lines == ()
+    assert second.truncated is False
 
-    # When: a full page is fetched
+
+def test_full_keeps_lines_from_the_start() -> None:
+    store = _line_store(120)
     page = fetch_timescaling_logs(store, _request(full=True))
-
-    # Then: lines start at the beginning, not the tail
     assert page.lines == tuple(f"line-{index}" for index in range(120))
     assert page.truncated is False
 
 
 def test_empty_hits_returns_note() -> None:
-    # Given: no objects for the run
     store = FakeStore(objects={})
-
-    # When: logs are fetched
     page = fetch_timescaling_logs(store, _request())
-
-    # Then: lines are empty and a note explains why
     assert page.lines == ()
     assert page.truncated is False
     assert page.note == (
@@ -173,33 +139,21 @@ def test_empty_hits_returns_note() -> None:
 
 @pytest.mark.parametrize("client", ["  ", "a/b"])
 def test_bad_client_raises(client: str) -> None:
-    # Given: a blank or slash-containing client
     store = FakeStore(objects={})
-
-    # When: logs are fetched
-    # Then: the client is rejected
     with pytest.raises(SettingsError, match="empty client"):
         _ = fetch_timescaling_logs(store, _request(client=client))
 
 
 def test_invalid_cursor_raises() -> None:
-    # Given: a cursor that is not valid
     store = FakeStore(objects={})
-
-    # When: logs are fetched with that cursor
-    # Then: the call fails as an invalid cursor
     with pytest.raises(SettingsError, match="invalid cursor"):
         _ = fetch_timescaling_logs(store, _request(cursor="not-a-cursor"))
 
 
 def test_mismatched_cursor_raises() -> None:
-    # Given: a valid cursor for one run
     key = "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1/stderr"
     store = FakeStore(objects={key: b"ok\n"})
     first = fetch_timescaling_logs(store, _request())
-
-    # When: the same cursor is reused with a different client
-    # Then: the call fails as an invalid cursor
     with pytest.raises(SettingsError, match="invalid cursor"):
         _ = fetch_timescaling_logs(
             store, _request(client="other", cursor=first.cursor)

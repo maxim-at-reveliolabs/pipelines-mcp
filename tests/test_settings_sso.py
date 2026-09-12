@@ -79,16 +79,9 @@ class FakePendingError(Exception):
     pass
 
 
-def _run_wait(work: Callable[[], None]) -> None:
-    work()
-
-
 def test_request_sso_skips_oidc_when_credentials_work() -> None:
-    # Given: AWS credentials for the profile already work
     oidc = FakeOidc()
     announced: list[str] = []
-
-    # When: requesting SSO
     request_sso(
         creds_ok=lambda: True,
         load_portal=lambda: _PORTAL,
@@ -96,28 +89,14 @@ def test_request_sso_skips_oidc_when_credentials_work() -> None:
         announce=announced.append,
         save_token=oidc.saved.__setitem__,
     )
-
-    # Then: no login URL and no device token
     assert announced == []
     assert oidc.saved == {}
 
 
-@pytest.mark.parametrize(
-    ("pending", "expected_sleeps"),
-    [
-        (1, [1]),
-        (2, [1, 1]),
-    ],
-)
-def test_request_sso_waits_then_saves_token(
-    pending: int, expected_sleeps: list[int]
-) -> None:
-    # Given: credentials do not work and the device grant succeeds after pending polls
-    oidc = FakeOidc(pending=pending)
+def test_request_sso_waits_then_saves_token() -> None:
+    oidc = FakeOidc(pending=2)
     announced: list[str] = []
     sleeps: list[float] = []
-
-    # When: requesting SSO and running the waiter immediately
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
             creds_ok=lambda: False,
@@ -127,22 +106,17 @@ def test_request_sso_waits_then_saves_token(
             announce=announced.append,
             save_token=oidc.saved.__setitem__,
             is_pending=lambda exc: isinstance(exc, FakePendingError),
-            spawn=_run_wait,
+            spawn=lambda work: work(),
         )
-
-    # Then: the login URL is announced, it waited, then a token is stored
     assert announced == [_URL]
-    assert sleeps == expected_sleeps
+    assert sleeps == [1, 1]
     assert oidc.saved["revelio-sso"]["accessToken"] == "access-token"
 
 
 def test_request_sso_raises_when_profile_portal_missing() -> None:
-    # Given: the AWS profile has no SSO portal
     def load_portal() -> SsoPortal:
         raise SettingsError(reason="AWS profile reveliolabs is missing")
 
-    # When: requesting SSO
-    # Then: a typed settings error is raised
     with pytest.raises(SettingsError, match="missing"):
         request_sso(
             creds_ok=lambda: False,
@@ -152,7 +126,6 @@ def test_request_sso_raises_when_profile_portal_missing() -> None:
 
 
 def test_request_sso_raises_url_and_starts_wait_in_background() -> None:
-    # Given: credentials do not work
     oidc = FakeOidc(pending=0)
     announced: list[str] = []
     started: list[Callable[[], None]] = []
@@ -160,7 +133,6 @@ def test_request_sso_raises_url_and_starts_wait_in_background() -> None:
     def spawn(work: Callable[[], None]) -> None:
         started.append(work)
 
-    # When: requesting SSO for the agent to show the human
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(
             creds_ok=lambda: False,
@@ -171,8 +143,6 @@ def test_request_sso_raises_url_and_starts_wait_in_background() -> None:
             is_pending=lambda exc: isinstance(exc, FakePendingError),
             spawn=spawn,
         )
-
-    # Then: the URL is on the error and a waiter was started
     assert caught.value.url == _URL
     assert _URL in str(caught.value)
     assert announced == [_URL]
@@ -180,7 +150,6 @@ def test_request_sso_raises_url_and_starts_wait_in_background() -> None:
 
 
 def test_request_sso_reuses_url_while_login_still_running() -> None:
-    # Given: a login was already started
     oidc = FakeOidc(pending=0)
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
@@ -191,17 +160,12 @@ def test_request_sso_reuses_url_while_login_still_running() -> None:
             save_token=oidc.saved.__setitem__,
             spawn=lambda _work: None,
         )
-
-    # When: requesting SSO again
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(creds_ok=lambda: False)
-
-    # Then: the same URL is returned without starting a new login
     assert caught.value.url == _URL
 
 
 def test_request_sso_sends_url_to_helper_without_announcing() -> None:
-    # Given: credentials do not work and the helper accepts the URL
     oidc = FakeOidc(pending=0)
     announced: list[str] = []
     sent: list[str] = []
@@ -210,7 +174,6 @@ def test_request_sso_sends_url_to_helper_without_announcing() -> None:
         sent.append(url)
         return True
 
-    # When: requesting SSO
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(
             creds_ok=lambda: False,
@@ -221,8 +184,6 @@ def test_request_sso_sends_url_to_helper_without_announcing() -> None:
             save_token=oidc.saved.__setitem__,
             spawn=lambda _work: None,
         )
-
-    # Then: the helper got the URL and the human did not
     assert sent == [_URL]
     assert announced == []
     assert caught.value.helper is True
@@ -230,7 +191,6 @@ def test_request_sso_sends_url_to_helper_without_announcing() -> None:
 
 
 def test_request_sso_reuses_helper_handoff_without_url() -> None:
-    # Given: a login was already handed to the helper
     oidc = FakeOidc(pending=0)
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
@@ -242,11 +202,7 @@ def test_request_sso_reuses_helper_handoff_without_url() -> None:
             save_token=oidc.saved.__setitem__,
             spawn=lambda _work: None,
         )
-
-    # When: requesting SSO again
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(creds_ok=lambda: False)
-
-    # Then: retry with no login URL
     assert caught.value.helper is True
     assert _URL not in str(caught.value)

@@ -25,9 +25,6 @@ if TYPE_CHECKING:
     from pipelines_mcp.object_store import LogStore
 
 _PREFERRED: Final = ("stderr", "controller", "stdout")
-_EMPTY_NOTE: Final = (
-    "No lines. Timescaling model logs stay empty until the model writes them."
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +139,10 @@ def _build_page(
             lines=(),
             cursor=_cursor_for(request, mode, prior_sa),
             truncated=False,
-            note=_EMPTY_NOTE,
+            note=(
+                "No lines. Timescaling model logs stay empty until "
+                "the model writes them."
+            ),
         )
     if dropped and not drop_front:
         start = 0 if prior_sa is None else prior_sa

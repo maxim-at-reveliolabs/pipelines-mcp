@@ -50,7 +50,6 @@ class K8sApiError(Exception):
 
     @override
     def __str__(self) -> str:
-        """Return a stable cluster-api error."""
         return f"cluster api {self.status}"
 
 
