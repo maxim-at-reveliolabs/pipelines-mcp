@@ -234,7 +234,8 @@ async def get_timescaling_log(
     and comptype from get_pipeline_job_config. Empty until the model writes
     logs. Same cursor rules as get_pipeline_log.
     """
-    return await fetch_timescaling_logs(
+    return await run_sync(
+        fetch_timescaling_logs,
         get_object_store(),
         TimescalingLogRequest(
             client=client,

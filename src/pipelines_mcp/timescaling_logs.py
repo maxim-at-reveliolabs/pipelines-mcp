@@ -6,7 +6,6 @@ import gzip
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
-from anyio.to_thread import run_sync
 from pydantic import BaseModel, ConfigDict
 
 from pipelines_mcp.errors import SettingsError
@@ -156,7 +155,7 @@ def _build_page(
     )
 
 
-async def fetch_timescaling_logs(
+def fetch_timescaling_logs(
     store: LogStore,
     request: TimescalingLogRequest,
 ) -> LogPage:
@@ -188,11 +187,11 @@ async def fetch_timescaling_logs(
     )
     keys: tuple[str, ...] = ()
     for prefix in prefixes:
-        keys = await run_sync(store.list_keys, prefix)
+        keys = store.list_keys(prefix)
         if keys:
             break
     chunks: list[str] = []
     for key in _pick_files(keys):
-        raw = await run_sync(store.get_bytes, key)
+        raw = store.get_bytes(key)
         chunks.extend(line for line in _decode(key, raw).splitlines())
     return _build_page(tuple(chunks), normalized, mode, prior_sa)

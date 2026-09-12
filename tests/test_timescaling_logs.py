@@ -9,8 +9,6 @@ from pipelines_mcp.timescaling_logs import (
     fetch_timescaling_logs,
 )
 
-pytestmark = pytest.mark.anyio
-
 
 @dataclass(slots=True)
 class FakeStore:
@@ -50,7 +48,7 @@ def _line_store(count: int) -> FakeStore:
     return FakeStore(objects={key: body})
 
 
-async def test_lists_rust_prefix() -> None:
+def test_lists_rust_prefix() -> None:
     # Given: a rust-layout stderr file for the run
     key = (
         "202608/acme/dashboard/timescaling/logs/timescaling-acme-dashboard-202608"
@@ -59,7 +57,7 @@ async def test_lists_rust_prefix() -> None:
     store = FakeStore(objects={key: b"gpu-ok\n"})
 
     # When: the first tail page is fetched
-    page = await fetch_timescaling_logs(store, _request())
+    page = fetch_timescaling_logs(store, _request())
 
     # Then: the rust prefix is listed and the line is returned
     assert store.prefixes[0] == "202608/acme/dashboard/timescaling/logs/"
@@ -68,13 +66,13 @@ async def test_lists_rust_prefix() -> None:
     assert page.note is None
 
 
-async def test_falls_back_to_legacy_prefix_when_rust_empty() -> None:
+def test_falls_back_to_legacy_prefix_when_rust_empty() -> None:
     # Given: only the legacy Go log layout has files
     key = "202608/logs/acme_202608_dashboard/j-ABC/steps/s-1/stderr"
     store = FakeStore(objects={key: b"legacy-ok\n"})
 
     # When: the first tail page is fetched
-    page = await fetch_timescaling_logs(store, _request())
+    page = fetch_timescaling_logs(store, _request())
 
     # Then: rust is tried first, then the legacy prefix, and the line is returned
     assert store.prefixes == [
@@ -85,7 +83,7 @@ async def test_falls_back_to_legacy_prefix_when_rust_empty() -> None:
     assert page.lines == ("legacy-ok",)
 
 
-async def test_falls_back_to_legacy_replica_prefix_when_rust_empty() -> None:
+def test_falls_back_to_legacy_replica_prefix_when_rust_empty() -> None:
     # Given: only the Go replica log layout has files
     key = (
         "202608/logs/acme_202608_dashboard_replica_0/"
@@ -94,7 +92,7 @@ async def test_falls_back_to_legacy_replica_prefix_when_rust_empty() -> None:
     store = FakeStore(objects={key: compress(b"glacier\n")})
 
     # When: the first tail page is fetched
-    page = await fetch_timescaling_logs(store, _request())
+    page = fetch_timescaling_logs(store, _request())
 
     # Then: rust then the replica prefix, and the bootstrap stderr line is returned
     assert store.prefixes == [
@@ -104,7 +102,7 @@ async def test_falls_back_to_legacy_replica_prefix_when_rust_empty() -> None:
     assert page.lines == ("glacier",)
 
 
-async def test_prefers_stderr_in_each_step_dir() -> None:
+def test_prefers_stderr_in_each_step_dir() -> None:
     # Given: one step with stderr and stdout
     base = "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1"
     store = FakeStore(
@@ -115,54 +113,54 @@ async def test_prefers_stderr_in_each_step_dir() -> None:
     )
 
     # When: logs are fetched
-    page = await fetch_timescaling_logs(store, _request())
+    page = fetch_timescaling_logs(store, _request())
 
     # Then: only stderr from that step is used
     assert page.lines == ("err",)
 
 
-async def test_gunzips_preferred_file() -> None:
+def test_gunzips_preferred_file() -> None:
     # Given: a gzipped stderr file
     key = "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1/stderr.gz"
     store = FakeStore(objects={key: compress(b"zipped\n")})
 
     # When: logs are fetched
-    page = await fetch_timescaling_logs(store, _request())
+    page = fetch_timescaling_logs(store, _request())
 
     # Then: the decoded line is returned
     assert page.lines == ("zipped",)
 
 
-async def test_tail_keeps_last_hundred_chronological_lines() -> None:
+def test_tail_keeps_last_hundred_chronological_lines() -> None:
     # Given: 120 stderr lines
     store = _line_store(120)
 
     # When: the first tail page is fetched
-    page = await fetch_timescaling_logs(store, _request())
+    page = fetch_timescaling_logs(store, _request())
 
     # Then: the last 100 lines are kept in order
     assert page.lines == tuple(f"line-{index}" for index in range(20, 120))
     assert page.truncated is True
 
 
-async def test_full_keeps_lines_from_the_start() -> None:
+def test_full_keeps_lines_from_the_start() -> None:
     # Given: 120 stderr lines
     store = _line_store(120)
 
     # When: a full page is fetched
-    page = await fetch_timescaling_logs(store, _request(full=True))
+    page = fetch_timescaling_logs(store, _request(full=True))
 
     # Then: lines start at the beginning, not the tail
     assert page.lines == tuple(f"line-{index}" for index in range(120))
     assert page.truncated is False
 
 
-async def test_empty_hits_returns_note() -> None:
+def test_empty_hits_returns_note() -> None:
     # Given: no objects for the run
     store = FakeStore(objects={})
 
     # When: logs are fetched
-    page = await fetch_timescaling_logs(store, _request())
+    page = fetch_timescaling_logs(store, _request())
 
     # Then: lines are empty and a note explains why
     assert page.lines == ()
@@ -174,35 +172,35 @@ async def test_empty_hits_returns_note() -> None:
 
 
 @pytest.mark.parametrize("client", ["  ", "a/b"])
-async def test_bad_client_raises(client: str) -> None:
+def test_bad_client_raises(client: str) -> None:
     # Given: a blank or slash-containing client
     store = FakeStore(objects={})
 
     # When: logs are fetched
     # Then: the client is rejected
     with pytest.raises(SettingsError, match="empty client"):
-        _ = await fetch_timescaling_logs(store, _request(client=client))
+        _ = fetch_timescaling_logs(store, _request(client=client))
 
 
-async def test_invalid_cursor_raises() -> None:
+def test_invalid_cursor_raises() -> None:
     # Given: a cursor that is not valid
     store = FakeStore(objects={})
 
     # When: logs are fetched with that cursor
     # Then: the call fails as an invalid cursor
     with pytest.raises(SettingsError, match="invalid cursor"):
-        _ = await fetch_timescaling_logs(store, _request(cursor="not-a-cursor"))
+        _ = fetch_timescaling_logs(store, _request(cursor="not-a-cursor"))
 
 
-async def test_mismatched_cursor_raises() -> None:
+def test_mismatched_cursor_raises() -> None:
     # Given: a valid cursor for one run
     key = "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1/stderr"
     store = FakeStore(objects={key: b"ok\n"})
-    first = await fetch_timescaling_logs(store, _request())
+    first = fetch_timescaling_logs(store, _request())
 
     # When: the same cursor is reused with a different client
     # Then: the call fails as an invalid cursor
     with pytest.raises(SettingsError, match="invalid cursor"):
-        _ = await fetch_timescaling_logs(
+        _ = fetch_timescaling_logs(
             store, _request(client="other", cursor=first.cursor)
         )
