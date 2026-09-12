@@ -20,7 +20,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | DTOs | `models.py` |
 | Output scrub | `redact.py` |
 
-`server.py` defines tools and must not call `run()`. `main()` installs lazy factories, then `mcp.run()`.
+`server.py` defines tools and must not call `run()`. `main()` installs SSO. Log, cluster, and object-store clients default inside the getters. Then `mcp.run()`.
 
 ## Live targets (baked in)
 

@@ -192,10 +192,11 @@ async def get_pipeline_log(
     full: bool = False,
 ) -> LogPage:
     """Read pipeline logs for a request."""
+    query = _nonempty(request_id, "request_id")
     return await fetch_logs(
         get_logs_client(),
         LogRequest(
-            request_id=request_id,
+            request_id=query,
             log_kind=LogKind.PIPELINE,
             cursor=cursor,
             full=full,
@@ -216,10 +217,11 @@ async def get_pipeline_service_log(
     full: bool = False,
 ) -> LogPage:
     """Read service logs for a request."""
+    query = _nonempty(request_id, "request_id")
     return await fetch_logs(
         get_logs_client(),
         LogRequest(
-            request_id=request_id,
+            request_id=query,
             log_kind=LogKind.SERVICE,
             cursor=cursor,
             full=full,
@@ -236,10 +238,11 @@ async def get_pipeline_service_log(
 )
 async def get_pipeline_start(request_id: str) -> PipelineStart:
     """Read start-line keys for a request."""
+    query = _nonempty(request_id, "request_id")
     page = await fetch_logs(
         get_logs_client(),
         LogRequest(
-            request_id=request_id,
+            request_id=query,
             log_kind=LogKind.SERVICE,
             full=True,
             size=20,

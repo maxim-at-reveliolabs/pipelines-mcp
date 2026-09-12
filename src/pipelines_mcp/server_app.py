@@ -38,12 +38,6 @@ class _Slot:
 _SLOT = _Slot()
 
 
-def _require_factory[T](factory: Callable[[], T] | None, missing: str) -> T:
-    if factory is None:
-        raise SettingsError(reason=missing)
-    return factory()
-
-
 def set_logs_factory(factory: Callable[[], httpx2.AsyncClient] | None) -> None:
     """Install the log client factory."""
     _SLOT.logs_factory = factory
@@ -68,10 +62,7 @@ def set_reauth(reauth: Callable[[], None] | None) -> None:
 
 
 def install_live() -> None:
-    """Install lazy log, cluster, object-store, and SSO factories."""
-    set_logs_factory(create_async_client)
-    set_k8s_factory(live_k8s)
-    set_object_store_factory(live_log_store)
+    """Install SSO login. Other live clients default inside the getters."""
     set_reauth(request_sso)
 
 
@@ -93,7 +84,8 @@ def _ensure_sso() -> None:
 def get_logs_client() -> httpx2.AsyncClient:
     """Return the log client. Does not check SSO."""
     if _SLOT.logs is None:
-        _SLOT.logs = _require_factory(_SLOT.logs_factory, "logs not wired")
+        factory = _SLOT.logs_factory or create_async_client
+        _SLOT.logs = factory()
     return _SLOT.logs
 
 
@@ -101,16 +93,16 @@ def get_k8s() -> K8s:
     """Return the cluster client. Checks SSO first."""
     _ensure_sso()
     if _SLOT.k8s is None:
-        _SLOT.k8s = _require_factory(_SLOT.k8s_factory, "cluster not wired")
+        factory = _SLOT.k8s_factory or live_k8s
+        _SLOT.k8s = factory()
     return _SLOT.k8s
 
 
 def get_object_store() -> LogStore:
     """Return the object store. Does not check SSO."""
     if _SLOT.object_store is None:
-        _SLOT.object_store = _require_factory(
-            _SLOT.object_store_factory, "timescaling logs not wired"
-        )
+        factory = _SLOT.object_store_factory or live_log_store
+        _SLOT.object_store = factory()
     return _SLOT.object_store
 
 
