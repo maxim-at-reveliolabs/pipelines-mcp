@@ -374,3 +374,37 @@ async def test_list_pipeline_artifact_files_tool_reads_store() -> None:
         "model_input/part-0.json",
         "model_output/part-1.json",
     ]
+
+
+async def test_list_pipeline_lifecycle_artifacts_tool_reads_store() -> None:
+    request_id = "11111111-1111-1111-1111-111111111111"
+
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def list_keys(self, prefix: str) -> tuple[str, ...]:
+            if prefix == f"202608/rust-unloads/{request_id}/":
+                return (f"{prefix}reference/plan.json",)
+            if prefix == (
+                "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
+            ):
+                return (f"{prefix}company.jsonl",)
+            return ()
+
+        def get_bytes(self, key: str) -> bytes:
+            raise AssertionError(key)
+
+    set_object_store_factory(Store)
+    try:
+        result = await mcp.call_tool(
+            "list_pipeline_lifecycle_artifacts",
+            {"batchtime": "202608", "request_id": request_id},
+        )
+    finally:
+        set_object_store_factory(None)
+    value = _page_from_tool(result)
+    assert value["unloads_prefix"] == f"202608/rust-unloads/{request_id}/"
+    assert value["folders"] == [{"name": "reference", "object_count": 1}]
+    assert value["jsonl_prefix"] == (
+        "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
+    )
+    assert value["jsonl_names"] == ["company.jsonl"]

@@ -157,6 +157,16 @@ class ArtifactFiles(BaseModel):
     keys: tuple[str, ...]
 
 
+class LifecycleArtifacts(BaseModel):
+    """Unload folders and shared jsonl names for one lifecycle run."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    unloads_prefix: str
+    folders: tuple[ArtifactFolder, ...]
+    jsonl_prefix: str
+    jsonl_names: tuple[str, ...]
+
+
 class PipelineConfigCheck(BaseModel):
     """Result of checking pipeline arguments JSON."""
 

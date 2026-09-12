@@ -8,11 +8,13 @@ from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
 from pipelines_mcp.artifacts import list_artifact_files, list_artifacts
+from pipelines_mcp.lifecycle_artifacts import list_lifecycle_artifacts
 from pipelines_mcp.logs import LogRequest, fetch_logs, nonempty
 from pipelines_mcp.models import (
     ArtifactFiles,
     ArtifactListing,
     Job,
+    LifecycleArtifacts,
     LogKind,
     LogPage,
     ObjectConfig,
@@ -68,6 +70,9 @@ get_pipeline_job_config.
 After list_pipeline_artifacts, pass a folder name to
 list_pipeline_artifact_files to see files inside it (model_input vs
 model_output, parquet parts, log dirs).
+list_pipeline_lifecycle_artifacts lists unload folders and shared jsonl
+names. Pass batchtime and the request_id UUID. Rust job artifacts stay
+on list_pipeline_artifacts.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
 Use the log tools instead.
@@ -376,6 +381,30 @@ async def list_pipeline_artifact_files(
         batchtime,
         comptype,
         folder,
+    )
+
+
+@_tool
+async def list_pipeline_lifecycle_artifacts(
+    batchtime: str,
+    request_id: str,
+) -> LifecycleArtifacts:
+    """Unload folders and shared jsonl names for one lifecycle run.
+
+    Pass batchtime and the request_id UUID. Lists first-level folders under
+    {batchtime}/rust-unloads/{request_id}/. Typical folders: reference,
+    dashboard-input, dashboard-timescaling, breakdowns, scraping-lags.
+    Also lists names under the shared jsonl prefix
+    {batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/.
+    Typical names: company.jsonl, region.jsonl. That jsonl prefix is per
+    batchtime, not per request. Rust job artifacts stay on
+    list_pipeline_artifacts. Does not return file contents.
+    """
+    return await run_sync(
+        list_lifecycle_artifacts,
+        get_object_store(),
+        batchtime,
+        request_id,
     )
 
 

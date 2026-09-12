@@ -19,6 +19,18 @@ def _job_prefix(client: str, batchtime: str, comptype: str) -> str:
     )
 
 
+def child_folders(store: LogStore, prefix: str) -> tuple[ArtifactFolder, ...]:
+    """Immediate child folders under prefix."""
+    counts: dict[str, int] = {}
+    for key in store.list_keys(prefix):
+        rest = key.removeprefix(prefix)
+        name = rest.partition("/")[0] if "/" in rest else ""
+        counts[name] = counts.get(name, 0) + 1
+    return tuple(
+        ArtifactFolder(name=name, object_count=counts[name]) for name in sorted(counts)
+    )
+
+
 def list_artifacts(
     store: LogStore,
     client: str,
@@ -27,15 +39,7 @@ def list_artifacts(
 ) -> ArtifactListing:
     """List immediate child folders under one rust job prefix."""
     prefix = _job_prefix(client, batchtime, comptype)
-    counts: dict[str, int] = {}
-    for key in store.list_keys(prefix):
-        rest = key.removeprefix(prefix)
-        name = rest.partition("/")[0] if "/" in rest else ""
-        counts[name] = counts.get(name, 0) + 1
-    folders = tuple(
-        ArtifactFolder(name=name, object_count=counts[name]) for name in sorted(counts)
-    )
-    return ArtifactListing(prefix=prefix, folders=folders)
+    return ArtifactListing(prefix=prefix, folders=child_folders(store, prefix))
 
 
 def list_artifact_files(
