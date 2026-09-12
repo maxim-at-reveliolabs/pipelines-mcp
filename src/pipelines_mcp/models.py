@@ -149,6 +149,14 @@ class ArtifactListing(BaseModel):
     folders: tuple[ArtifactFolder, ...]
 
 
+class ArtifactFiles(BaseModel):
+    """Object keys under one rust artifact folder."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    prefix: str
+    keys: tuple[str, ...]
+
+
 class PipelineConfigCheck(BaseModel):
     """Result of checking pipeline arguments JSON."""
 

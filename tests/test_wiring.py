@@ -340,3 +340,37 @@ async def test_list_pipeline_artifacts_tool_reads_store() -> None:
         {"name": "output", "object_count": 1},
         {"name": "timescaling", "object_count": 1},
     ]
+
+
+async def test_list_pipeline_artifact_files_tool_reads_store() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def list_keys(self, prefix: str) -> tuple[str, ...]:
+            _ = prefix
+            return (
+                "202608/acme/dashboard/timescaling/model_input/part-0.json",
+                "202608/acme/dashboard/timescaling/model_output/part-1.json",
+            )
+
+        def get_bytes(self, key: str) -> bytes:
+            raise AssertionError(key)
+
+    set_object_store_factory(Store)
+    try:
+        result = await mcp.call_tool(
+            "list_pipeline_artifact_files",
+            {
+                "client": "acme",
+                "batchtime": "202608",
+                "comptype": "dashboard",
+                "folder": "timescaling",
+            },
+        )
+    finally:
+        set_object_store_factory(None)
+    value = _page_from_tool(result)
+    assert value["prefix"] == "202608/acme/dashboard/timescaling/"
+    assert value["keys"] == [
+        "model_input/part-0.json",
+        "model_output/part-1.json",
+    ]

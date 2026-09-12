@@ -7,9 +7,10 @@ from inspect import cleandoc
 from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
-from pipelines_mcp.artifacts import list_artifacts
+from pipelines_mcp.artifacts import list_artifact_files, list_artifacts
 from pipelines_mcp.logs import LogRequest, fetch_logs, nonempty
 from pipelines_mcp.models import (
+    ArtifactFiles,
     ArtifactListing,
     Job,
     LogKind,
@@ -64,6 +65,9 @@ then get_timescaling_log.
 list_pipeline_artifacts lists artifact folders for one rust job after the
 pod is gone. Pass client, batchtime, and comptype from
 get_pipeline_job_config.
+After list_pipeline_artifacts, pass a folder name to
+list_pipeline_artifact_files to see files inside it (model_input vs
+model_output, parquet parts, log dirs).
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
 Use the log tools instead.
@@ -349,6 +353,29 @@ async def list_pipeline_artifacts(
         client,
         batchtime,
         comptype,
+    )
+
+
+@_tool
+async def list_pipeline_artifact_files(
+    client: str,
+    batchtime: str,
+    comptype: str,
+    folder: str,
+) -> ArtifactFiles:
+    """Object keys inside one rust artifact folder.
+
+    After list_pipeline_artifacts, pass a folder name to see files inside it
+    (model_input vs model_output, parquet parts, log dirs). Keys are relative
+    to {batchtime}/{client}/{comptype}/{folder}/. Does not return file contents.
+    """
+    return await run_sync(
+        list_artifact_files,
+        get_object_store(),
+        client,
+        batchtime,
+        comptype,
+        folder,
     )
 
 

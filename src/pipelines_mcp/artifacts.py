@@ -1,14 +1,22 @@
-"""Artifact folder listing from an injected object store."""
+"""Artifact folders and keys from an injected object store."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from pipelines_mcp.logs import token
-from pipelines_mcp.models import ArtifactFolder, ArtifactListing
+from pipelines_mcp.models import ArtifactFiles, ArtifactFolder, ArtifactListing
 
 if TYPE_CHECKING:
     from pipelines_mcp.object_store import LogStore
+
+
+def _job_prefix(client: str, batchtime: str, comptype: str) -> str:
+    return (
+        f"{token(batchtime, 'batchtime')}/"
+        f"{token(client, 'client')}/"
+        f"{token(comptype, 'comptype')}/"
+    )
 
 
 def list_artifacts(
@@ -18,11 +26,7 @@ def list_artifacts(
     comptype: str,
 ) -> ArtifactListing:
     """List immediate child folders under one rust job prefix."""
-    prefix = (
-        f"{token(batchtime, 'batchtime')}/"
-        f"{token(client, 'client')}/"
-        f"{token(comptype, 'comptype')}/"
-    )
+    prefix = _job_prefix(client, batchtime, comptype)
     counts: dict[str, int] = {}
     for key in store.list_keys(prefix):
         rest = key.removeprefix(prefix)
@@ -32,3 +36,22 @@ def list_artifacts(
         ArtifactFolder(name=name, object_count=counts[name]) for name in sorted(counts)
     )
     return ArtifactListing(prefix=prefix, folders=folders)
+
+
+def list_artifact_files(
+    store: LogStore,
+    client: str,
+    batchtime: str,
+    comptype: str,
+    folder: str,
+) -> ArtifactFiles:
+    """List object keys under one rust artifact folder."""
+    prefix = f"{_job_prefix(client, batchtime, comptype)}{token(folder, 'folder')}/"
+    keys = tuple(
+        sorted(
+            key.removeprefix(prefix)
+            for key in store.list_keys(prefix)
+            if key.startswith(prefix) and key != prefix
+        )
+    )
+    return ArtifactFiles(prefix=prefix, keys=keys)
