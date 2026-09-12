@@ -1,6 +1,6 @@
 """Read-only job and pod access over an injected kubernetes API."""
 
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportArgumentType=false
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ import json
 from dataclasses import dataclass
 from http import HTTPStatus
 from os import environ
-from typing import TYPE_CHECKING, Protocol, TypeIs, override
+from typing import TYPE_CHECKING, Protocol, override
 
 import yaml
 from pydantic import TypeAdapter
 
-from pipelines_mcp.errors import NotFoundError, SettingsError
+from pipelines_mcp.errors import NotFoundError
 from pipelines_mcp.models import (
     ContainerState,
     ContainerStatus,
@@ -72,14 +72,6 @@ class CoreApi(Protocol):
     ) -> V1PodList: ...
 
     def read_namespaced_pod(self, name: str, namespace: str) -> V1Pod: ...
-
-
-def _is_batch(api: object) -> TypeIs[BatchApi]:
-    return hasattr(api, "read_namespaced_job") and hasattr(api, "list_namespaced_job")
-
-
-def _is_core(api: object) -> TypeIs[CoreApi]:
-    return hasattr(api, "read_namespaced_pod") and hasattr(api, "list_namespaced_pod")
 
 
 def _api[T](read: Callable[[], T]) -> T:
@@ -330,10 +322,4 @@ def live_k8s() -> K8s:
 
     environ["AWS_PROFILE"] = AWS_PROFILE
     api_client = new_client_from_config(persist_config=False)
-    batch = BatchV1Api(api_client)
-    core = CoreV1Api(api_client)
-    if not _is_batch(batch):
-        raise SettingsError(reason="batch api is missing")
-    if not _is_core(core):
-        raise SettingsError(reason="core api is missing")
-    return K8s(batch=batch, core=core)
+    return K8s(batch=BatchV1Api(api_client), core=CoreV1Api(api_client))
