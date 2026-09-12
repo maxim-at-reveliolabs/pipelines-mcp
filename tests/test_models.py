@@ -20,9 +20,6 @@ from pipelines_mcp.models import (
     ObjectConfig,
     PipelineStart,
     Pod,
-    Replica,
-    RequestId,
-    StepIndex,
     job_name,
     parse_job_name,
 )
@@ -133,7 +130,7 @@ def test_domain_error_is_typed_dataclass_not_value_error(
     ],
 )
 def test_job_name_is_unpadded(step: int, replica: int, expected: str) -> None:
-    assert job_name(RequestId("r1"), StepIndex(step), Replica(replica)) == expected
+    assert job_name("r1", step, replica) == expected
 
 
 def test_parse_job_name_splits_pipeline_job() -> None:

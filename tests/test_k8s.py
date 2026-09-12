@@ -24,19 +24,12 @@ from kubernetes.client import (
 
 from pipelines_mcp.errors import NotFoundError
 from pipelines_mcp.k8s import K8s, K8sApiError
-from pipelines_mcp.models import (
-    ContainerState,
-    PodName,
-    Replica,
-    RequestId,
-    StepIndex,
-    job_name,
-)
+from pipelines_mcp.models import ContainerState, job_name
 
 _NS = "pipelines-ns"
 _SECRET = "AKIAIOSFODNN7EXAMPLE"  # noqa: S105
-_JOB = job_name(RequestId("r1"), StepIndex(0), Replica(0))
-_POD = PodName("r1-0-0-abc")
+_JOB = job_name("r1", 0, 0)
+_POD = "r1-0-0-abc"
 _START = datetime(2026, 1, 1, tzinfo=UTC)
 
 

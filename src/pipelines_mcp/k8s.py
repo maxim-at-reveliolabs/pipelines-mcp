@@ -18,10 +18,8 @@ from pipelines_mcp.models import (
     ContainerState,
     ContainerStatus,
     Job,
-    JobName,
     ObjectConfig,
     Pod,
-    PodName,
     parse_job_name,
 )
 from pipelines_mcp.redact import redact_text
@@ -127,7 +125,7 @@ def _meta_name(meta: V1ObjectMeta | None, fallback: str) -> str:
     return meta.name
 
 
-def _job_dto(raw: V1Job, name: JobName) -> Job:
+def _job_dto(raw: V1Job, name: str) -> Job:
     meta = raw.metadata
     raw_name = _meta_name(meta, name)
     status = raw.status
@@ -163,7 +161,7 @@ def _container(item: V1ContainerStatus) -> ContainerStatus:
     )
 
 
-def _pod_job_name(meta: V1ObjectMeta | None, job: JobName | None) -> str:
+def _pod_job_name(meta: V1ObjectMeta | None, job: str | None) -> str:
     if job is not None:
         return job
     labels = None if meta is None else meta.labels
@@ -172,7 +170,7 @@ def _pod_job_name(meta: V1ObjectMeta | None, job: JobName | None) -> str:
     return labels.get("batch.kubernetes.io/job-name") or labels.get("job-name") or ""
 
 
-def _pod_dto(raw: V1Pod, job: JobName | None = None) -> Pod:
+def _pod_dto(raw: V1Pod, job: str | None = None) -> Pod:
     meta = raw.metadata
     name = _meta_name(meta, "")
     status = raw.status
@@ -215,7 +213,7 @@ def _object_config(raw: V1Job | V1Pod, fallback: str) -> ObjectConfig:
     )
 
 
-def _pod_selector(job: V1Job, name: JobName) -> str:
+def _pod_selector(job: V1Job, name: str) -> str:
     spec = job.spec
     if spec is not None:
         selector = spec.selector
@@ -238,11 +236,11 @@ class K8s:
     core: CoreApi
     namespace: str = "pipelines-prd"
 
-    def get_job(self, name: JobName) -> Job:
+    def get_job(self, name: str) -> Job:
         """Read one job or raise NotFoundError."""
         return _job_dto(self._require_job(name), name)
 
-    def list_pods(self, name: JobName) -> tuple[Pod, ...]:
+    def list_pods(self, name: str) -> tuple[Pod, ...]:
         """List pods for a job. Empty if the job or pods are gone."""
         raw = self._read_job(name)
         if raw is None:
@@ -255,23 +253,23 @@ class K8s:
             return ()
         return tuple(_pod_dto(item, name) for item in items)
 
-    def get_pod(self, pod_name: PodName) -> Pod:
+    def get_pod(self, pod_name: str) -> Pod:
         """Read one pod or raise NotFoundError."""
         return _pod_dto(self._require_pod(pod_name))
 
-    def _require_job(self, name: JobName) -> V1Job:
+    def _require_job(self, name: str) -> V1Job:
         raw = self._read_job(name)
         if raw is None:
             raise NotFoundError(entity="job")
         return raw
 
-    def _require_pod(self, pod_name: PodName) -> V1Pod:
+    def _require_pod(self, pod_name: str) -> V1Pod:
         raw = _found(lambda: self.core.read_namespaced_pod(pod_name, self.namespace))
         if raw is None:
             raise NotFoundError(entity="pod")
         return raw
 
-    def _read_job(self, name: JobName) -> V1Job | None:
+    def _read_job(self, name: str) -> V1Job | None:
         return _found(lambda: self.batch.read_namespaced_job(name, self.namespace))
 
     def list_jobs(
@@ -288,7 +286,7 @@ class K8s:
         matched: list[Job] = []
         for raw in items:
             meta = raw.metadata
-            name = JobName(_meta_name(meta, ""))
+            name = _meta_name(meta, "")
             row = _job_dto(raw, name)
             if status is not None and row.status != status:
                 continue
@@ -298,11 +296,11 @@ class K8s:
         matched.sort(key=lambda row: row.start_time or "", reverse=True)
         return tuple(matched[:limit])
 
-    def job_config(self, name: JobName) -> ObjectConfig:
+    def job_config(self, name: str) -> ObjectConfig:
         """Read one job's redacted YAML config."""
         return _object_config(self._require_job(name), name)
 
-    def pod_config(self, pod_name: PodName) -> ObjectConfig:
+    def pod_config(self, pod_name: str) -> ObjectConfig:
         """Read one pod's redacted YAML config."""
         return _object_config(self._require_pod(pod_name), pod_name)
 

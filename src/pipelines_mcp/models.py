@@ -1,20 +1,14 @@
 """Frozen pipeline DTOs returned by tools."""
 
 from enum import StrEnum, unique
-from typing import ClassVar, NewType
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
-RequestId = NewType("RequestId", str)
-StepIndex = NewType("StepIndex", int)
-Replica = NewType("Replica", int)
-PodName = NewType("PodName", str)
-JobName = NewType("JobName", str)
 
-
-def job_name(request_id: RequestId, step_index: StepIndex, replica: Replica) -> JobName:
+def job_name(request_id: str, step_index: int, replica: int) -> str:
     """Build `pipelines-{request_id}-{step_index}-{replica}` with no padding."""
-    return JobName(f"pipelines-{request_id}-{step_index}-{replica}")
+    return f"pipelines-{request_id}-{step_index}-{replica}"
 
 
 def parse_job_name(name: str) -> tuple[str | None, int | None, int | None]:
