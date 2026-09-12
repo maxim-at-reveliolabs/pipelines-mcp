@@ -199,24 +199,17 @@ type _YamlValue = _YamlAtom | list[_YamlValue] | dict[str, _YamlValue]
 _YAML_MAP: TypeAdapter[dict[str, _YamlValue]] = TypeAdapter(dict[str, _YamlValue])
 
 
-def _config_payload(raw: V1Job | V1Pod) -> dict[str, _YamlValue]:
+def _object_config(raw: V1Job | V1Pod, fallback: str) -> ObjectConfig:
     from kubernetes.client import ApiClient  # noqa: PLC0415  # load on use
 
-    dumped = json.dumps(ApiClient().sanitize_for_serialization(raw), default=str)
-    return _YAML_MAP.validate_json(dumped)
-
-
-def _config_yaml(raw: V1Job | V1Pod) -> str:
-    dumped = yaml.safe_dump(
-        _config_payload(raw), sort_keys=False, allow_unicode=True
+    payload = _YAML_MAP.validate_json(
+        json.dumps(ApiClient().sanitize_for_serialization(raw), default=str)
     )
-    return redact_text(dumped)
-
-
-def _object_config(raw: V1Job | V1Pod, fallback: str) -> ObjectConfig:
     return ObjectConfig(
         name=redact_text(_meta_name(raw.metadata, fallback)),
-        config=_config_yaml(raw),
+        config=redact_text(
+            yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+        ),
     )
 
 
