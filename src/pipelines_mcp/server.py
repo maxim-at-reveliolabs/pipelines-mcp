@@ -79,6 +79,26 @@ def _job_name(request_id: str, step_index: int, replica: int) -> str:
     return job_name(nonempty(request_id, "request_id"), step_index, replica)
 
 
+async def _es_log(
+    request_id: str,
+    log_kind: LogKind,
+    cursor: str | None = None,
+    *,
+    full: bool = False,
+    size: int | None = None,
+) -> LogPage:
+    return await fetch_logs(
+        get_logs_client(),
+        LogRequest(
+            request_id=nonempty(request_id, "request_id"),
+            log_kind=log_kind,
+            cursor=cursor,
+            full=full,
+        ),
+        size=size,
+    )
+
+
 @_tool
 async def list_pipeline_jobs(
     status: str | None = None,
@@ -171,16 +191,7 @@ async def get_pipeline_log(
     Empty until the worker is running. Default is the last 100 lines plus a
     cursor. Pass cursor to get only new lines. full=true still caps size.
     """
-    query = nonempty(request_id, "request_id")
-    return await fetch_logs(
-        get_logs_client(),
-        LogRequest(
-            request_id=query,
-            log_kind=LogKind.PIPELINE,
-            cursor=cursor,
-            full=full,
-        ),
-    )
+    return await _es_log(request_id, LogKind.PIPELINE, cursor, full=full)
 
 
 @_tool
@@ -194,16 +205,7 @@ async def get_pipeline_service_log(
 
     Use with worker logs. Same cursor rules as get_pipeline_log.
     """
-    query = nonempty(request_id, "request_id")
-    return await fetch_logs(
-        get_logs_client(),
-        LogRequest(
-            request_id=query,
-            log_kind=LogKind.SERVICE,
-            cursor=cursor,
-            full=full,
-        ),
-    )
+    return await _es_log(request_id, LogKind.SERVICE, cursor, full=full)
 
 
 @_tool
@@ -213,16 +215,7 @@ async def get_pipeline_start(request_id: str) -> PipelineStart:
     arguments stays the original JSON string. Use when the job is gone and you
     need those keys. Retry if the line is not there yet.
     """
-    query = nonempty(request_id, "request_id")
-    page = await fetch_logs(
-        get_logs_client(),
-        LogRequest(
-            request_id=query,
-            log_kind=LogKind.SERVICE,
-            full=True,
-        ),
-        size=20,
-    )
+    page = await _es_log(request_id, LogKind.SERVICE, full=True, size=20)
     return parse_start(page.lines)
 
 
