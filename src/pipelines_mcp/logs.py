@@ -159,14 +159,6 @@ class _EsResponse(BaseModel):
     hits: _EsHits = _EsHits()
 
 
-def _decode_cursor(cursor: str) -> _CursorPayload:
-    try:
-        raw = base64.b64decode(cursor.encode("ascii"), validate=True)
-        return _CursorPayload.model_validate_json(raw)
-    except (ValueError, binascii.Error, UnicodeError, ValidationError) as exc:
-        raise SettingsError(reason="invalid cursor") from exc
-
-
 def _check_cursor(payload: _CursorPayload, request: LogRequest, mode: LogMode) -> None:
     mismatched = (
         payload.kind != request.log_kind
@@ -203,6 +195,22 @@ def cap_log_bytes[T](
     return items[:end], True
 
 
+def decode_log_cursor[T: BaseModel](cursor: str, payload_type: type[T]) -> T:
+    """Parse a base64 JSON cursor into a payload model."""
+    try:
+        raw = base64.b64decode(cursor.encode("ascii"), validate=True)
+        return payload_type.model_validate_json(raw)
+    except (ValueError, binascii.Error, UnicodeError, ValidationError) as exc:
+        raise SettingsError(reason="invalid cursor") from exc
+
+
+def encode_log_cursor(payload: BaseModel) -> str:
+    """Turn a payload model into a redacted base64 JSON cursor."""
+    dumped = payload.model_dump(mode="json")
+    raw = json.dumps(dumped, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return redact_text(base64.b64encode(raw).decode("ascii"))
+
+
 def _to_hits(parsed: _EsResponse) -> tuple[_Hit, ...]:
     out: list[_Hit] = []
     for hit in parsed.hits.hits:
@@ -213,15 +221,15 @@ def _to_hits(parsed: _EsResponse) -> tuple[_Hit, ...]:
 
 
 def _cursor_for(ctx: _PageCtx, sa: list[str | int | float] | None) -> str:
-    dumped = _CursorPayload(
-        v=1,
-        sa=sa,
-        mode=ctx.mode,
-        kind=ctx.request.log_kind,
-        req=ctx.request.request_id,
-    ).model_dump(mode="json")
-    raw = json.dumps(dumped, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    return redact_text(base64.b64encode(raw).decode("ascii"))
+    return encode_log_cursor(
+        _CursorPayload(
+            v=1,
+            sa=sa,
+            mode=ctx.mode,
+            kind=ctx.request.log_kind,
+            req=ctx.request.request_id,
+        )
+    )
 
 
 def _empty_note(kind: LogKind) -> str:
@@ -280,7 +288,7 @@ async def fetch_logs(
     mode = LogMode.FULL if normalized.full else LogMode.TAIL
     prior_sa: list[str | int | float] | None = None
     if normalized.cursor is not None:
-        payload = _decode_cursor(normalized.cursor)
+        payload = decode_log_cursor(normalized.cursor, _CursorPayload)
         _check_cursor(payload, normalized, mode)
         prior_sa = payload.sa
     match mode:

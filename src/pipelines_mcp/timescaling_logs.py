@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
 import gzip
-import json
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 from anyio.to_thread import run_sync
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict
 
 from pipelines_mcp.errors import SettingsError
-from pipelines_mcp.logs import FULL_MAX_HITS, TAIL_LINES, LogMode, cap_log_bytes
+from pipelines_mcp.logs import (
+    FULL_MAX_HITS,
+    TAIL_LINES,
+    LogMode,
+    cap_log_bytes,
+    decode_log_cursor,
+    encode_log_cursor,
+)
 from pipelines_mcp.models import LogPage
 from pipelines_mcp.redact import redact_text
 
@@ -87,29 +91,21 @@ def _decode(key: str, raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def _decode_cursor(cursor: str) -> _CursorPayload:
-    try:
-        raw = base64.b64decode(cursor.encode("ascii"), validate=True)
-        return _CursorPayload.model_validate_json(raw)
-    except (ValueError, binascii.Error, UnicodeError, ValidationError) as exc:
-        raise SettingsError(reason="invalid cursor") from exc
-
-
 def _cursor_for(
     request: TimescalingLogRequest,
     mode: LogMode,
     sa: int | None,
 ) -> str:
-    dumped = _CursorPayload(
-        v=1,
-        sa=sa,
-        mode=mode,
-        client=request.client,
-        batchtime=request.batchtime,
-        comptype=request.comptype,
-    ).model_dump(mode="json")
-    raw = json.dumps(dumped, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    return redact_text(base64.b64encode(raw).decode("ascii"))
+    return encode_log_cursor(
+        _CursorPayload(
+            v=1,
+            sa=sa,
+            mode=mode,
+            client=request.client,
+            batchtime=request.batchtime,
+            comptype=request.comptype,
+        )
+    )
 
 
 def _build_page(
@@ -173,7 +169,7 @@ async def fetch_timescaling_logs(
     mode = LogMode.FULL if normalized.full else LogMode.TAIL
     prior_sa: int | None = None
     if normalized.cursor is not None:
-        payload = _decode_cursor(normalized.cursor)
+        payload = decode_log_cursor(normalized.cursor, _CursorPayload)
         mismatched = (
             payload.mode != mode
             or payload.client != normalized.client
