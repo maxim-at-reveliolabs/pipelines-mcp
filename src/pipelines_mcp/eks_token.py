@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Final, Protocol, TypedDict
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.settings import AWS_PROFILE, AWS_REGION
 
 if TYPE_CHECKING:
@@ -85,26 +85,26 @@ class KubeClientConfig(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class CachedCluster:
+class EksCluster:
     """Cluster API endpoint and decoded CA PEM."""
 
     endpoint: str
     ca_pem: str
 
     @classmethod
-    def from_ca_data(cls, *, endpoint: str, ca_data: str) -> CachedCluster:
+    def from_ca_data(cls, *, endpoint: str, ca_data: str) -> EksCluster:
         """Decode a cluster endpoint and base64 CA."""
         try:
             pem = base64.b64decode(ca_data, validate=True).decode("utf-8")
         except (ValueError, UnicodeError, binascii.Error) as exc:
-            raise SettingsError(reason="cluster lookup failed") from exc
+            raise DomainError(reason="cluster config is invalid") from exc
         stripped = endpoint.strip()
         if stripped == "" or pem.strip() == "":
-            raise SettingsError(reason="cluster lookup failed")
+            raise DomainError(reason="cluster config is invalid")
         return cls(endpoint=stripped, ca_pem=pem)
 
 
-_CLUSTER: Final = CachedCluster.from_ca_data(
+_CLUSTER: Final = EksCluster.from_ca_data(
     endpoint=_CLUSTER_ENDPOINT,
     ca_data=_CA_B64,
 )
@@ -145,16 +145,16 @@ def mint_token(mint: TokenMint) -> str:
 
 
 class EksAuth:
-    """Caches cluster CA and remints the bearer token.
+    """Remints the bearer token. CA is baked in.
 
     Mutation is required: token timestamp and the CA tempfile stay on this
     object for process lifetime.
     """
 
-    def __init__(self, mint: TokenMint, cluster: CachedCluster, clock: Clock) -> None:
+    def __init__(self, mint: TokenMint, cluster: EksCluster, clock: Clock) -> None:
         """Keep mint state, cluster, and clock on this object."""
         self._mint: TokenMint = mint
-        self._cluster: CachedCluster = cluster
+        self._cluster: EksCluster = cluster
         self._clock: Clock = clock
         self._minted_at: float | None = None
         self._ca_file: IO[str] | None = None
@@ -192,10 +192,10 @@ class EksAuth:
         config.ssl_ca_cert = self._ca_file.name
 
 
-def eks_auth_from_settings(
+def live_eks_auth(
     *,
     signer: PresignSigner | None = None,
-    cluster: CachedCluster | None = None,
+    cluster: EksCluster | None = None,
     clock: Clock | None = None,
 ) -> EksAuth:
     """Build EksAuth from the baked-in cluster and optional signer."""
@@ -231,7 +231,7 @@ def _sts_signer(session: Session) -> tuple[PresignSigner, STSClient]:
 
     credentials = session.get_credentials()
     if credentials is None:
-        raise SettingsError(reason="AWS credentials are missing")
+        raise DomainError(reason="AWS credentials are missing")
     sts: STSClient = session.client("sts", region_name=AWS_REGION)
     signer = RequestSigner(
         sts.meta.service_model.service_id,

@@ -123,7 +123,7 @@ def _job_name(request_id: str, step_index: int, replica: int) -> str:
 
 
 async def _es_log(
-    request_id: str,
+    match: str,
     log_kind: LogKind,
     cursor: str | None = None,
     *,
@@ -133,7 +133,7 @@ async def _es_log(
     return await fetch_logs(
         get_logs_client(),
         LogRequest(
-            request_id=request_id,
+            match=match,
             log_kind=log_kind,
             cursor=cursor,
             full=full,
@@ -204,7 +204,7 @@ async def get_pipeline_step_status(request_id: str) -> PipelineStepRuns:
     stripped = nonempty(request_id, "request_id")
     page = await fetch_logs(
         get_logs_client(),
-        LogRequest(request_id=stripped, log_kind=LogKind.SERVICE, full=True),
+        LogRequest(match=stripped, log_kind=LogKind.SERVICE, full=True),
     )
     return parse_step_status(stripped, page.lines)
 
@@ -274,7 +274,7 @@ async def get_pipeline_log(
     Empty until the worker is running. Default is the last 100 lines plus a
     cursor. Pass cursor to get only new lines. full=true still caps size.
     """
-    return await _es_log(request_id, LogKind.PIPELINE, cursor, full=full)
+    return await _es_log(request_id, LogKind.WORKER, cursor, full=full)
 
 
 @_tool
@@ -293,7 +293,7 @@ async def get_pipeline_step_log(
     """
     return await _es_log(
         _job_name(request_id, step_index, replica),
-        LogKind.PIPELINE,
+        LogKind.WORKER,
         cursor,
         full=full,
     )
@@ -325,7 +325,7 @@ async def search_pipeline_log(
 
     query is required and must not be empty. Same cursor rules as get_pipeline_log.
     """
-    return await _es_log(request_id, LogKind.PIPELINE, cursor, full=full, query=query)
+    return await _es_log(request_id, LogKind.WORKER, cursor, full=full, query=query)
 
 
 @_tool
@@ -352,7 +352,7 @@ async def get_pipeline_start(request_id: str) -> PipelineStart:
     """
     page = await fetch_logs(
         get_logs_client(),
-        LogRequest(request_id=request_id, log_kind=LogKind.SERVICE, full=True),
+        LogRequest(match=request_id, log_kind=LogKind.SERVICE, full=True),
         size=20,
     )
     return parse_start(page.lines)

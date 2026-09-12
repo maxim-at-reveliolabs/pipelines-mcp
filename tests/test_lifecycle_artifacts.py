@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.lifecycle_artifacts import (
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
@@ -77,8 +77,8 @@ def test_empty_prefixes_return_empty_tuples() -> None:
         ("202608", "aa/bb", "request_id"),
     ],
 )
-def test_bad_token_raises(batchtime: str, request_id: str, field: str) -> None:
-    with pytest.raises(SettingsError, match=f"empty {field}"):
+def test_bad_path_segment_raises(batchtime: str, request_id: str, field: str) -> None:
+    with pytest.raises(DomainError, match=f"empty {field}"):
         _ = list_lifecycle_artifacts(FakeStore(keys=()), batchtime, request_id)
 
 
@@ -133,10 +133,10 @@ def test_skips_the_unload_prefix_key() -> None:
         ("202608", _REQUEST, "a/b", "folder"),
     ],
 )
-def test_bad_file_token_raises(
+def test_bad_file_path_segment_raises(
     batchtime: str, request_id: str, folder: str, field: str
 ) -> None:
-    with pytest.raises(SettingsError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=f"empty {field}"):
         _ = list_lifecycle_artifact_files(
             FakeStore(keys=()), batchtime, request_id, folder
         )

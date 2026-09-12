@@ -1,4 +1,4 @@
-"""Elasticsearch query bodies, log pages, and the HTTP client factory."""
+"""Log pages, shared cursor helpers, and the Elasticsearch HTTP client factory."""
 
 import base64
 import binascii
@@ -12,10 +12,10 @@ from typing import ClassVar, Final, Literal
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.models import LogKind, LogPage
 from pipelines_mcp.redact import redact_text
-from pipelines_mcp.settings import EsAuth, load_es_auth
+from pipelines_mcp.settings import BasicAuth, load_es_auth
 
 type JsonValue = (
     str | int | float | bool | Sequence[JsonValue] | Mapping[str, JsonValue] | None
@@ -27,16 +27,16 @@ _ES_CONTENT_HEADERS: Final[Mapping[str, str]] = {
 }
 
 TAIL_LINES: Final[int] = 100
-FULL_MAX_HITS: Final[int] = 500
+FULL_MAX_LINES: Final[int] = 500
 _FULL_MAX_BYTES: Final[int] = 32768
 
 
-def create_async_client(
+def create_logs_client(
     *,
-    auth: EsAuth | None = None,
+    auth: BasicAuth | None = None,
     transport: httpx2.AsyncBaseTransport | None = None,
 ) -> httpx2.AsyncClient:
-    """Build an async client with production HTTP/2 defaults."""
+    """Build the Elasticsearch log client with production HTTP/2 defaults."""
     client_transport = (
         transport
         if transport is not None
@@ -75,9 +75,9 @@ def create_async_client(
 
 @dataclass(frozen=True, slots=True)
 class LogRequest:
-    """One request-level log read: kind, cursor, and page mode."""
+    """One log read: match, kind, cursor, and page mode."""
 
-    request_id: str
+    match: str
     log_kind: LogKind
     cursor: str | None = None
     full: bool = False
@@ -93,9 +93,9 @@ def _search_body(
     match request.log_kind:
         case LogKind.SERVICE:
             field = "parsed.pipeline-id"
-        case LogKind.PIPELINE:
+        case LogKind.WORKER:
             field = "kubernetes.pod_name"
-    query = f'{field}:"{request.request_id}"'
+    query = f'{field}:"{request.match}"'
     if request.query is not None:
         quoted = request.query.replace("\\", "\\\\").replace('"', '\\"')
         query = f'{query} AND "{quoted}"'
@@ -137,7 +137,7 @@ class _CursorPayload(BaseModel):
     sa: list[str | int | float] | None
     mode: LogMode
     kind: LogKind
-    req: str
+    match: str
 
 
 class _EsSource(BaseModel):
@@ -193,7 +193,7 @@ def decode_log_cursor[T: BaseModel](cursor: str, payload_type: type[T]) -> T:
         raw = base64.b64decode(cursor.encode("ascii"), validate=True)
         return payload_type.model_validate_json(raw)
     except (ValueError, binascii.Error, UnicodeError, ValidationError) as exc:
-        raise SettingsError(reason="invalid cursor") from exc
+        raise DomainError(reason="invalid cursor") from exc
 
 
 def encode_log_cursor(payload: BaseModel) -> str:
@@ -219,14 +219,14 @@ def _cursor_for(ctx: _PageCtx, sa: list[str | int | float] | None) -> str:
             sa=sa,
             mode=ctx.mode,
             kind=ctx.request.log_kind,
-            req=ctx.request.request_id,
+            match=ctx.request.match,
         )
     )
 
 
 def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
     match ctx.request.log_kind:
-        case LogKind.PIPELINE:
+        case LogKind.WORKER:
             empty = "No lines. Worker logs stay empty until a pod is running."
         case LogKind.SERVICE:
             empty = "No lines."
@@ -262,18 +262,18 @@ def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
 
 
 def nonempty(raw: str, field: str) -> str:
-    """Strip a required token. Empty fails."""
+    """Strip a required string. Empty fails."""
     stripped = raw.strip()
     if stripped == "":
-        raise SettingsError(reason=f"empty {field}")
+        raise DomainError(reason=f"empty {field}")
     return stripped
 
 
-def token(raw: str, field: str) -> str:
-    """Strip a path token. Empty or slash fails."""
+def path_segment(raw: str, field: str) -> str:
+    """Strip a path part. Empty or slash fails."""
     stripped = nonempty(raw, field)
     if "/" in stripped:
-        raise SettingsError(reason=f"empty {field}")
+        raise DomainError(reason=f"empty {field}")
     return stripped
 
 
@@ -285,7 +285,7 @@ async def fetch_logs(
     """Fetch one capped log page from Elasticsearch."""
     normalized = replace(
         request,
-        request_id=nonempty(request.request_id, "request_id"),
+        match=nonempty(request.match, "request_id"),
         query=None if request.query is None else nonempty(request.query, "query"),
     )
     mode = LogMode.FULL if normalized.full else LogMode.TAIL
@@ -295,10 +295,10 @@ async def fetch_logs(
         mismatched = (
             payload.kind != normalized.log_kind
             or payload.mode != mode
-            or payload.req != normalized.request_id
+            or payload.match != normalized.match
         )
         if mismatched:
-            raise SettingsError(reason="invalid cursor")
+            raise DomainError(reason="invalid cursor")
         prior_sa = payload.sa
     match mode:
         case LogMode.TAIL:
@@ -306,7 +306,7 @@ async def fetch_logs(
             page_size = TAIL_LINES
         case LogMode.FULL:
             order = "asc"
-            page_size = FULL_MAX_HITS if size is None else size
+            page_size = FULL_MAX_LINES if size is None else size
     content = json.dumps(
         _search_body(normalized, order, page_size, prior_sa),
         separators=(",", ":"),
@@ -319,9 +319,9 @@ async def fetch_logs(
         )
         _ = response.raise_for_status()
     except httpx2.HTTPStatusError as exc:
-        raise SettingsError(reason=f"log store {exc.response.status_code}") from exc
+        raise DomainError(reason=f"log store {exc.response.status_code}") from exc
     except httpx2.RequestError as exc:
-        raise SettingsError(reason="log store unreachable") from exc
+        raise DomainError(reason="log store unreachable") from exc
     parsed = _EsResponse.model_validate_json(response.content)
     return _build_page(
         _to_hits(parsed),

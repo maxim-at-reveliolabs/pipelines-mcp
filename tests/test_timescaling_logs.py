@@ -3,7 +3,7 @@ from gzip import compress
 
 import pytest
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.timescaling_logs import (
     TimescalingLogRequest,
     fetch_timescaling_logs,
@@ -140,13 +140,13 @@ def test_empty_hits_returns_note() -> None:
 @pytest.mark.parametrize("client", ["  ", "a/b"])
 def test_bad_client_raises(client: str) -> None:
     store = FakeStore(objects={})
-    with pytest.raises(SettingsError, match="empty client"):
+    with pytest.raises(DomainError, match="empty client"):
         _ = fetch_timescaling_logs(store, _request(client=client))
 
 
 def test_invalid_cursor_raises() -> None:
     store = FakeStore(objects={})
-    with pytest.raises(SettingsError, match="invalid cursor"):
+    with pytest.raises(DomainError, match="invalid cursor"):
         _ = fetch_timescaling_logs(store, _request(cursor="not-a-cursor"))
 
 
@@ -154,7 +154,7 @@ def test_mismatched_cursor_raises() -> None:
     key = "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1/stderr"
     store = FakeStore(objects={key: b"ok\n"})
     first = fetch_timescaling_logs(store, _request())
-    with pytest.raises(SettingsError, match="invalid cursor"):
+    with pytest.raises(DomainError, match="invalid cursor"):
         _ = fetch_timescaling_logs(
             store, _request(client="other", cursor=first.cursor)
         )

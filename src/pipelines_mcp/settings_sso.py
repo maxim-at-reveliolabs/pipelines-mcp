@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from types_boto3_sso_oidc.client import SSOOIDCClient
 
-from pipelines_mcp.errors import SettingsError, SsoLoginRequiredError
+from pipelines_mcp.errors import DomainError, SsoLoginRequiredError
 from pipelines_mcp.settings import AWS_PROFILE
 from pipelines_mcp.sso_url import send_sso_url
 
@@ -109,7 +109,7 @@ def _device_login(
     )
     url = device.get("verificationUriComplete")
     if not isinstance(url, str) or url == "":
-        raise SettingsError(reason="SSO login URL is missing")
+        raise DomainError(reason="SSO login URL is missing")
 
     def wait() -> None:
         interval = float(device.get("interval", 5))
@@ -131,7 +131,7 @@ def _device_login(
                         deadline = time.monotonic() + wait_seconds
                     sleep(interval)
                     continue
-                raise SettingsError(reason="SSO login failed") from exc
+                raise DomainError(reason="SSO login failed") from exc
         cache_key = (
             portal.session_name if portal.session_name is not None else portal.start_url
         )
@@ -213,7 +213,7 @@ def _iso_utc(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
-def sso_auth_expired(exc: BaseException) -> bool:
+def sso_needs_login(exc: BaseException) -> bool:
     """True when boto3 failed because the SSO token is missing or dead."""
     from botocore.exceptions import (  # noqa: PLC0415  # load on use
         SSOTokenLoadError,
@@ -235,9 +235,9 @@ def _live_creds_ok() -> bool:
     try:
         credentials = boto3.Session(profile_name=AWS_PROFILE).get_credentials()
     except ProfileNotFound as exc:
-        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} is missing") from exc
+        raise DomainError(reason=f"AWS profile {AWS_PROFILE} is missing") from exc
     except Exception as exc:  # boto3 SSO errors are not a stable type
-        if sso_auth_expired(exc):
+        if sso_needs_login(exc):
             return False
         raise
     if credentials is None:
@@ -245,7 +245,7 @@ def _live_creds_ok() -> bool:
     try:
         _ = credentials.get_frozen_credentials()
     except Exception as exc:  # boto3 SSO errors are not a stable type
-        if sso_auth_expired(exc):
+        if sso_needs_login(exc):
             return False
         raise
     return True
@@ -255,24 +255,24 @@ def _live_load_portal() -> SsoPortal:
     parser = ConfigParser()
     read = parser.read(Path.home() / ".aws" / "config")
     if not read:
-        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} is missing")
+        raise DomainError(reason=f"AWS profile {AWS_PROFILE} is missing")
     section = f"profile {AWS_PROFILE}"
     if not parser.has_section(section):
-        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} is missing")
+        raise DomainError(reason=f"AWS profile {AWS_PROFILE} is missing")
     session_name = parser.get(section, "sso_session", fallback="")
     if session_name != "":
         sso_section = f"sso-session {session_name}"
         if not parser.has_section(sso_section):
-            raise SettingsError(reason="SSO session is missing")
+            raise DomainError(reason="SSO session is missing")
         start = parser.get(sso_section, "sso_start_url", fallback="")
         region = parser.get(sso_section, "sso_region", fallback="")
         if start == "" or region == "":
-            raise SettingsError(reason="SSO session is incomplete")
+            raise DomainError(reason="SSO session is incomplete")
         return SsoPortal(start_url=start, region=region, session_name=session_name)
     start = parser.get(section, "sso_start_url", fallback="")
     region = parser.get(section, "sso_region", fallback="")
     if start == "" or region == "":
-        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} has no SSO start URL")
+        raise DomainError(reason=f"AWS profile {AWS_PROFILE} has no SSO start URL")
     return SsoPortal(start_url=start, region=region, session_name=None)
 
 

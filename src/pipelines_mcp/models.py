@@ -30,7 +30,7 @@ def parse_job_name(name: str) -> tuple[str | None, int | None, int | None]:
 class LogKind(StrEnum):
     """Kind of log query."""
 
-    PIPELINE = "pipeline"
+    WORKER = "worker"
     SERVICE = "service"
 
 
@@ -111,8 +111,8 @@ class PipelineStart(BaseModel):
     pipeline_id: str
 
 
-class PipelineStepStatus(BaseModel):
-    """One pipeline service step. Spec is never a field."""
+class PipelineStep(BaseModel):
+    """One pipeline service step with name and arguments."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     step_index: int
@@ -130,7 +130,7 @@ class PipelineStatus(BaseModel):
     start_time: str
     end_time: str
     created_at: str
-    steps: tuple[PipelineStepStatus, ...]
+    steps: tuple[PipelineStep, ...]
 
 
 class PipelineQueueItem(BaseModel):
@@ -177,7 +177,7 @@ class ArtifactListing(BaseModel):
 
 
 class ArtifactFiles(BaseModel):
-    """Object keys under one rust artifact folder."""
+    """Object keys under one artifact folder."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     prefix: str

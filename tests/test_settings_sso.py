@@ -4,7 +4,7 @@ from typing import Final
 
 import pytest
 
-from pipelines_mcp.errors import SettingsError, SsoLoginRequiredError
+from pipelines_mcp.errors import DomainError, SsoLoginRequiredError
 from pipelines_mcp.settings_sso import SsoPortal, request_sso
 
 _URL: Final = "https://device.sso.example.test/?user_code=ABCD-EFGH"
@@ -115,9 +115,9 @@ def test_request_sso_waits_then_saves_token() -> None:
 
 def test_request_sso_raises_when_profile_portal_missing() -> None:
     def load_portal() -> SsoPortal:
-        raise SettingsError(reason="AWS profile reveliolabs is missing")
+        raise DomainError(reason="AWS profile reveliolabs is missing")
 
-    with pytest.raises(SettingsError, match="missing"):
+    with pytest.raises(DomainError, match="missing"):
         request_sso(
             creds_ok=lambda: False,
             load_portal=load_portal,

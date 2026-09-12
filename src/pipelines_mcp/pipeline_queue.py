@@ -11,7 +11,7 @@ from pipeline_service_client.client import PipelineServiceClient
 from pipeline_service_client.errors import PipelineServiceClientError
 from pipeline_service_client.generated_code.pipeline_util_pb2 import EmptyMessage
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.models import PipelineQueueItem
 from pipelines_mcp.settings import load_pipeline_auth
 
@@ -37,7 +37,7 @@ class _ClientQueueStore:
                 ),
             )
         except PipelineServiceClientError as exc:
-            raise SettingsError(reason="pipeline queue failed") from exc
+            raise DomainError(reason="pipeline queue failed") from exc
         return tuple(
             PipelineQueueItem(
                 request_id=item.id,
@@ -57,5 +57,5 @@ def live_queue_store() -> QueueStore:
             password=auth.password.get_secret_value(),
         )
     except PipelineServiceClientError as exc:
-        raise SettingsError(reason="pipeline queue failed") from exc
+        raise DomainError(reason="pipeline queue failed") from exc
     return _ClientQueueStore(client=client)

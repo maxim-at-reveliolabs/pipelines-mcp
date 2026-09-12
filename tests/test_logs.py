@@ -5,20 +5,20 @@ import httpx2
 import pytest
 from pydantic import SecretStr, TypeAdapter
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.logs import (
     JsonValue,
     LogRequest,
-    create_async_client,
+    create_logs_client,
     fetch_logs,
 )
 from pipelines_mcp.models import LogKind, LogPage
-from pipelines_mcp.settings import EsAuth
+from pipelines_mcp.settings import BasicAuth
 
 pytestmark = pytest.mark.anyio
 
 _JSON_OBJECT: Final = TypeAdapter(dict[str, JsonValue])
-_AUTH = EsAuth(username="u", password=SecretStr("p"))
+_AUTH = BasicAuth(username="u", password=SecretStr("p"))
 
 
 def _es_hit(line: str, stamp: str) -> dict[str, JsonValue]:
@@ -36,7 +36,7 @@ async def _fetch(
         return httpx2.Response(200, json={"hits": {"hits": hits}})
 
     transport = httpx2.MockTransport(handler)
-    async with create_async_client(auth=_AUTH, transport=transport) as client:
+    async with create_logs_client(auth=_AUTH, transport=transport) as client:
         page = await fetch_logs(client, request)
     return page, bodies
 
@@ -61,13 +61,13 @@ def _assert_search(
     ("kind", "line", "query", "absent"),
     [
         (LogKind.SERVICE, "svc", 'parsed.pipeline-id:"req-1"', "kubernetes.pod_name"),
-        (LogKind.PIPELINE, "pod", 'kubernetes.pod_name:"req-1"', "parsed.pipeline-id"),
+        (LogKind.WORKER, "pod", 'kubernetes.pod_name:"req-1"', "parsed.pipeline-id"),
     ],
 )
 async def test_kind_filters_query_string(
     kind: LogKind, line: str, query: str, absent: str
 ) -> None:
-    request = LogRequest(request_id="req-1", log_kind=kind)
+    request = LogRequest(match="req-1", log_kind=kind)
     page, bodies = await _fetch(request, [_es_hit(line, "t1")])
     assert page.lines == (line,)
     clause = _query_string(bodies[0])
@@ -78,7 +78,7 @@ async def test_kind_filters_query_string(
 
 
 async def test_returns_whole_log_line_not_message() -> None:
-    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE)
+    request = LogRequest(match="r1", log_kind=LogKind.WORKER)
     hits: list[dict[str, JsonValue]] = [
         {
             "_source": {"log": "whole-line message=extracted", "message": "extracted"},
@@ -91,15 +91,15 @@ async def test_returns_whole_log_line_not_message() -> None:
 
 
 async def test_cursor_search_after_passthrough() -> None:
-    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE)
+    request = LogRequest(match="r1", log_kind=LogKind.WORKER)
     first_hits = [
         _es_hit("newer", "2026-01-01T00:00:02Z"),
         _es_hit("older", "2026-01-01T00:00:01Z"),
     ]
     first_page, first_bodies = await _fetch(request, first_hits)
     follow = LogRequest(
-        request_id="r1",
-        log_kind=LogKind.PIPELINE,
+        match="r1",
+        log_kind=LogKind.WORKER,
         cursor=first_page.cursor,
     )
     second_page, second_bodies = await _fetch(
@@ -115,7 +115,7 @@ async def test_cursor_search_after_passthrough() -> None:
 
 
 async def test_full_byte_cap() -> None:
-    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE, full=True)
+    request = LogRequest(match="r1", log_kind=LogKind.WORKER, full=True)
     hits = [
         _es_hit("a" * 20000, "t1"),
         _es_hit("b" * 20000, "t2"),
@@ -128,7 +128,7 @@ async def test_full_byte_cap() -> None:
 
 
 async def test_empty_hits_returns_cursor_string() -> None:
-    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE)
+    request = LogRequest(match="r1", log_kind=LogKind.WORKER)
     page, bodies = await _fetch(request, [])
     assert page.lines == ()
     assert page.truncated is False
@@ -140,28 +140,28 @@ async def test_empty_hits_returns_cursor_string() -> None:
 
 async def test_invalid_cursor_raises() -> None:
     request = LogRequest(
-        request_id="r1",
-        log_kind=LogKind.PIPELINE,
+        match="r1",
+        log_kind=LogKind.WORKER,
         cursor="not-a-cursor",
     )
-    with pytest.raises(SettingsError, match="invalid cursor"):
+    with pytest.raises(DomainError, match="invalid cursor"):
         _ = await _fetch(request, [])
 
 
 async def test_mismatched_cursor_raises() -> None:
-    first = LogRequest(request_id="r1", log_kind=LogKind.SERVICE)
+    first = LogRequest(match="r1", log_kind=LogKind.SERVICE)
     first_page, _ = await _fetch(first, [_es_hit("x", "t1")])
     mismatched = LogRequest(
-        request_id="r1",
-        log_kind=LogKind.PIPELINE,
+        match="r1",
+        log_kind=LogKind.WORKER,
         cursor=first_page.cursor,
     )
-    with pytest.raises(SettingsError, match="invalid cursor"):
+    with pytest.raises(DomainError, match="invalid cursor"):
         _ = await _fetch(mismatched, [])
 
 
 async def test_tail_keeps_last_hundred_chronological_lines() -> None:
-    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE)
+    request = LogRequest(match="r1", log_kind=LogKind.WORKER)
     hits = [_es_hit(f"line-{index}", f"t{index:03d}") for index in range(99, -1, -1)]
     page, bodies = await _fetch(request, hits)
     assert page.lines == tuple(f"line-{index}" for index in range(100))
@@ -169,21 +169,21 @@ async def test_tail_keeps_last_hundred_chronological_lines() -> None:
     _assert_search(bodies[0], order="desc", size=100)
 
 
-async def test_http_error_becomes_settings_error() -> None:
-    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE)
+async def test_http_error_becomes_domain_error() -> None:
+    request = LogRequest(match="r1", log_kind=LogKind.WORKER)
 
     def handler(http_request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(503, request=http_request)
 
     transport = httpx2.MockTransport(handler)
-    async with create_async_client(auth=_AUTH, transport=transport) as client:
-        with pytest.raises(SettingsError, match="log store 503"):
+    async with create_logs_client(auth=_AUTH, transport=transport) as client:
+        with pytest.raises(DomainError, match="log store 503"):
             _ = await fetch_logs(client, request)
 
 
 async def test_client_sets_basic_auth_header() -> None:
-    auth = EsAuth(username="elastic", password=SecretStr("es-pass"))
-    async with create_async_client(
+    auth = BasicAuth(username="elastic", password=SecretStr("es-pass"))
+    async with create_logs_client(
         auth=auth,
         transport=httpx2.MockTransport(lambda _req: httpx2.Response(200)),
     ) as client:
@@ -204,12 +204,12 @@ async def test_client_sets_basic_auth_header() -> None:
 async def test_query_is_quoted_and_anded_with_kind_filter(
     text: str, expected: str
 ) -> None:
-    request = LogRequest(request_id="req-1", log_kind=LogKind.PIPELINE, query=text)
+    request = LogRequest(match="req-1", log_kind=LogKind.WORKER, query=text)
     _, bodies = await _fetch(request, [])
     assert _query_string(bodies[0])["query"] == expected
 
 
 async def test_empty_query_raises() -> None:
-    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE, query="")
-    with pytest.raises(SettingsError, match="empty query"):
+    request = LogRequest(match="r1", log_kind=LogKind.WORKER, query="")
+    with pytest.raises(DomainError, match="empty query"):
         _ = await _fetch(request, [])

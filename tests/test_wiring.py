@@ -19,18 +19,18 @@ from mcp.types import CallToolResult, InputRequiredResult
 from pydantic import SecretStr, TypeAdapter
 
 from pipelines_mcp.k8s import K8s, K8sApiError
-from pipelines_mcp.logs import JsonValue, create_async_client
-from pipelines_mcp.models import PipelineQueueItem, PipelineStatus, PipelineStepStatus
+from pipelines_mcp.logs import JsonValue, create_logs_client
+from pipelines_mcp.models import PipelineQueueItem, PipelineStatus, PipelineStep
 from pipelines_mcp.server import mcp
 from pipelines_mcp.server_app import (
     set_k8s_factory,
     set_logs_factory,
     set_object_store_factory,
     set_queue_store_factory,
-    set_reauth,
+    set_sso,
     set_status_store_factory,
 )
-from pipelines_mcp.settings import EsAuth
+from pipelines_mcp.settings import BasicAuth
 
 pytestmark = pytest.mark.anyio
 
@@ -114,8 +114,8 @@ async def _wired(
         payload = [] if hits is None else hits
         return httpx2.Response(200, json={"hits": {"hits": payload}})
 
-    client = create_async_client(
-        auth=EsAuth(username="u", password=SecretStr("p")),
+    client = create_logs_client(
+        auth=BasicAuth(username="u", password=SecretStr("p")),
         transport=httpx2.MockTransport(handler),
     )
     k8s = K8s(
@@ -124,7 +124,7 @@ async def _wired(
     )
     set_logs_factory(lambda: client)
     set_k8s_factory(lambda: k8s)
-    set_reauth(lambda: None)
+    set_sso(lambda: None)
     try:
         yield recorder
     finally:
@@ -132,7 +132,7 @@ async def _wired(
         set_k8s_factory(None)
         set_status_store_factory(None)
         set_queue_store_factory(None)
-        set_reauth(None)
+        set_sso(None)
         await client.aclose()
 
 
@@ -183,7 +183,7 @@ async def test_get_pipeline_status_through_tool() -> None:
         end_time="t1",
         created_at="t2",
         steps=(
-            PipelineStepStatus(
+            PipelineStep(
                 step_index=0,
                 name="",
                 arguments='{"batchtime": "202609"}',

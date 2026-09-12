@@ -4,7 +4,7 @@ import pytest
 from mcp.types import CallToolResult, InputRequiredResult
 from pydantic import BaseModel, ConfigDict
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.models import PipelineConfigCheck
 from pipelines_mcp.pipeline_config import check_pipeline_config
 from pipelines_mcp.server import mcp
@@ -71,14 +71,14 @@ def test_validator_accept_clears_error(
     assert result == PipelineConfigCheck(valid=True, error=None)
 
 
-def test_validator_crash_is_settings_error(
+def test_validator_crash_is_domain_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def boom(_config: dict[str, str]) -> dict[str, str]:
         raise RuntimeError
 
     monkeypatch.setattr("pipelines_mcp.pipeline_config.validate", boom)
-    with pytest.raises(SettingsError, match="pipeline config check failed"):
+    with pytest.raises(DomainError, match="pipeline config check failed"):
         _ = check_pipeline_config("{}")
 
 

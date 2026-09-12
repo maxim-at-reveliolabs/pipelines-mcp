@@ -5,7 +5,7 @@ from typing import Final
 
 from pydantic import TypeAdapter, ValidationError
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.models import PipelineStart
 
 _START_FIELDS: Final = TypeAdapter(dict[str, str])
@@ -28,9 +28,9 @@ def parse_start(lines: Sequence[str]) -> PipelineStart:
                 pipeline_id=payload["pipeline-id"],
             )
         except (ValidationError, KeyError) as err:
-            raise SettingsError(
+            raise DomainError(
                 reason="starting pipeline line is not valid"
             ) from err
-    raise SettingsError(
+    raise DomainError(
         reason="No starting pipeline line yet. Retry after the service queues the job."
     )

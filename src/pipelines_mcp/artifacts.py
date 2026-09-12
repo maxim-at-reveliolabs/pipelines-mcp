@@ -6,8 +6,8 @@ import gzip
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from pipelines_mcp.errors import SettingsError
-from pipelines_mcp.logs import nonempty, token
+from pipelines_mcp.errors import DomainError
+from pipelines_mcp.logs import nonempty, path_segment
 from pipelines_mcp.models import (
     ArtifactFiles,
     ArtifactFolder,
@@ -17,21 +17,21 @@ from pipelines_mcp.models import (
 from pipelines_mcp.redact import redact_text
 
 if TYPE_CHECKING:
-    from pipelines_mcp.object_store import LogStore
+    from pipelines_mcp.object_store import ObjectStore
 
 _PARQUET_MAGIC: Final = b"PAR1"
 _TEXT_CAP: Final = 32768
 
 
-def _job_prefix(client: str, batchtime: str, comptype: str) -> str:
+def _artifact_prefix(client: str, batchtime: str, comptype: str) -> str:
     return (
-        f"{token(batchtime, 'batchtime')}/"
-        f"{token(client, 'client')}/"
-        f"{token(comptype, 'comptype')}/"
+        f"{path_segment(batchtime, 'batchtime')}/"
+        f"{path_segment(client, 'client')}/"
+        f"{path_segment(comptype, 'comptype')}/"
     )
 
 
-def child_folders(store: LogStore, prefix: str) -> tuple[ArtifactFolder, ...]:
+def child_folders(store: ObjectStore, prefix: str) -> tuple[ArtifactFolder, ...]:
     """Immediate child folders under prefix."""
     counts: dict[str, int] = {}
     for key in store.list_keys(prefix):
@@ -43,7 +43,7 @@ def child_folders(store: LogStore, prefix: str) -> tuple[ArtifactFolder, ...]:
     )
 
 
-def child_keys(store: LogStore, prefix: str) -> tuple[str, ...]:
+def child_keys(store: ObjectStore, prefix: str) -> tuple[str, ...]:
     """Object keys under prefix, relative to that prefix."""
     return tuple(
         sorted(
@@ -55,25 +55,28 @@ def child_keys(store: LogStore, prefix: str) -> tuple[str, ...]:
 
 
 def list_artifacts(
-    store: LogStore,
+    store: ObjectStore,
     client: str,
     batchtime: str,
     comptype: str,
 ) -> ArtifactListing:
     """List immediate child folders under one rust job prefix."""
-    prefix = _job_prefix(client, batchtime, comptype)
+    prefix = _artifact_prefix(client, batchtime, comptype)
     return ArtifactListing(prefix=prefix, folders=child_folders(store, prefix))
 
 
 def list_artifact_files(
-    store: LogStore,
+    store: ObjectStore,
     client: str,
     batchtime: str,
     comptype: str,
     folder: str,
 ) -> ArtifactFiles:
     """List object keys under one rust artifact folder."""
-    prefix = f"{_job_prefix(client, batchtime, comptype)}{token(folder, 'folder')}/"
+    prefix = (
+        f"{_artifact_prefix(client, batchtime, comptype)}"
+        f"{path_segment(folder, 'folder')}/"
+    )
     return ArtifactFiles(prefix=prefix, keys=child_keys(store, prefix))
 
 
@@ -94,23 +97,23 @@ def _decode(key: str, raw: bytes) -> str:
         try:
             body = gzip.decompress(raw)
         except OSError as exc:
-            raise SettingsError(reason="log store unreachable") from exc
+            raise DomainError(reason="object store unreachable") from exc
     if body.startswith(_PARQUET_MAGIC):
-        raise SettingsError(reason="parquet is not text")
+        raise DomainError(reason="parquet is not text")
     return body.decode("utf-8", errors="replace")
 
 
-def get_artifact_text(store: LogStore, request: ArtifactTextRequest) -> ArtifactText:
+def get_artifact_text(store: ObjectStore, request: ArtifactTextRequest) -> ArtifactText:
     """Return a short redacted text head of one rust artifact object."""
     prefix = (
-        f"{_job_prefix(request.client, request.batchtime, request.comptype)}"
-        f"{token(request.folder, 'folder')}/"
+        f"{_artifact_prefix(request.client, request.batchtime, request.comptype)}"
+        f"{path_segment(request.folder, 'folder')}/"
     )
     key = nonempty(request.key, "key")
     if key.startswith("/") or ".." in key or "" in key.split("/"):
-        raise SettingsError(reason="empty key")
+        raise DomainError(reason="empty key")
     if key.lower().endswith(".parquet"):
-        raise SettingsError(reason="parquet is not text")
+        raise DomainError(reason="parquet is not text")
     raw = store.get_bytes(f"{prefix}{key}")
     text = redact_text(_decode(key, raw))
     encoded = text.encode("utf-8")

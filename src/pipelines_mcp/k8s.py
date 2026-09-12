@@ -260,20 +260,20 @@ class K8s:
         """Read one job or raise NotFoundError."""
         return _job_dto(_require(self._read_job(name), "job"), name)
 
-    def list_pods(self, name: str) -> tuple[Pod, ...]:
+    def list_pods(self, job_name: str) -> tuple[Pod, ...]:
         """List pods for a job. Empty if the job or pods are gone."""
-        raw = self._read_job(name)
+        raw = self._read_job(job_name)
         if raw is None:
             return ()
         listed = _api(
             lambda: self.core.list_namespaced_pod(
-                self.namespace, label_selector=_pod_selector(raw, name)
+                self.namespace, label_selector=_pod_selector(raw, job_name)
             )
         )
         items = listed.items
         if items is None:
             return ()
-        return tuple(_pod_dto(item, name) for item in items)
+        return tuple(_pod_dto(item, job_name) for item in items)
 
     def get_pod(self, pod_name: str) -> Pod:
         """Read one pod or raise NotFoundError."""
@@ -327,9 +327,9 @@ def live_k8s() -> K8s:
         CoreV1Api,
     )
 
-    from pipelines_mcp.eks_token import eks_auth_from_settings  # noqa: PLC0415
+    from pipelines_mcp.eks_token import live_eks_auth  # noqa: PLC0415
 
     config = Configuration()
-    eks_auth_from_settings().bind(config)
+    live_eks_auth().bind(config)
     api_client = ApiClient(configuration=config)
     return K8s(batch=BatchV1Api(api_client), core=CoreV1Api(api_client))

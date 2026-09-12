@@ -5,7 +5,7 @@ from typing import override
 
 
 @dataclass(frozen=True, slots=True)
-class SettingsError(Exception):
+class DomainError(Exception):
     """A tool call failed with a stable message."""
 
     reason: str

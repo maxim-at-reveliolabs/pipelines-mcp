@@ -1,4 +1,4 @@
-"""AWS deploy values and Elasticsearch auth from AWS Secrets Manager."""
+"""AWS deploy values and username/password secrets."""
 
 # pyright: reportUnknownMemberType=false
 
@@ -18,7 +18,7 @@ from pydantic import (
     field_validator,
 )
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 
 if TYPE_CHECKING:
     from types_boto3_secretsmanager.client import SecretsManagerClient
@@ -29,7 +29,7 @@ AWS_PROFILE: Final = "reveliolabs"
 type SecretReader = Callable[[str], str]
 
 
-class EsAuth(BaseModel):
+class BasicAuth(BaseModel):
     """Username and password."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="ignore")
@@ -55,27 +55,27 @@ def _aws_read(secret_id: str) -> str:
     try:
         response = client.get_secret_value(SecretId=secret_id)
     except ClientError as exc:
-        raise SettingsError(reason="secret read failed") from exc
+        raise DomainError(reason="secret read failed") from exc
     secret = response.get("SecretString", "")
     if secret == "":
-        raise SettingsError(reason="secret is empty")
+        raise DomainError(reason="secret is empty")
     return secret
 
 
-def _load_auth(secret_id: str, *, read_secret: SecretReader | None) -> EsAuth:
+def _load_auth(secret_id: str, *, read_secret: SecretReader | None) -> BasicAuth:
     reader = _aws_read if read_secret is None else read_secret
     try:
-        return EsAuth.model_validate_json(reader(secret_id))
+        return BasicAuth.model_validate_json(reader(secret_id))
     except (ValidationError, ValueError) as exc:
-        raise SettingsError(reason="secret is invalid") from exc
+        raise DomainError(reason="secret is invalid") from exc
 
 
-def load_es_auth(*, read_secret: SecretReader | None = None) -> EsAuth:
+def load_es_auth(*, read_secret: SecretReader | None = None) -> BasicAuth:
     """Read Elasticsearch basic auth from AWS Secrets Manager."""
     return _load_auth("elasticsearch/elastic", read_secret=read_secret)
 
 
-def load_pipeline_auth(*, read_secret: SecretReader | None = None) -> EsAuth:
+def load_pipeline_auth(*, read_secret: SecretReader | None = None) -> BasicAuth:
     """Read pipeline service login from AWS Secrets Manager."""
     return _load_auth(
         "pipelines/prod/service_pipelines_user_prod@reveliolabs.com",

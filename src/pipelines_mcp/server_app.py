@@ -9,17 +9,17 @@ import httpx2
 from mcp.server.mcpserver.exceptions import ToolError
 
 from pipelines_mcp.errors import (
+    DomainError,
     NotFoundError,
-    SettingsError,
     SsoLoginRequiredError,
 )
 from pipelines_mcp.k8s import K8s, K8sApiError, live_k8s
-from pipelines_mcp.logs import create_async_client
-from pipelines_mcp.object_store import LogStore, live_log_store
+from pipelines_mcp.logs import create_logs_client
+from pipelines_mcp.object_store import ObjectStore, live_object_store
 from pipelines_mcp.pipeline_queue import QueueStore, live_queue_store
 from pipelines_mcp.pipeline_status import StatusStore, live_status_store
 from pipelines_mcp.redact import redact_text
-from pipelines_mcp.settings_sso import request_sso, sso_auth_expired
+from pipelines_mcp.settings_sso import request_sso, sso_needs_login
 
 _RETRY_LOGIN: Final = "AWS login required. Retry the same request."
 
@@ -30,15 +30,15 @@ class _Slot:
 
     logs: httpx2.AsyncClient | None = None
     k8s: K8s | None = None
-    object_store: LogStore | None = None
+    object_store: ObjectStore | None = None
     status_store: StatusStore | None = None
     queue_store: QueueStore | None = None
     logs_factory: Callable[[], httpx2.AsyncClient] | None = None
     k8s_factory: Callable[[], K8s] | None = None
-    object_store_factory: Callable[[], LogStore] | None = None
+    object_store_factory: Callable[[], ObjectStore] | None = None
     status_store_factory: Callable[[], StatusStore] | None = None
     queue_store_factory: Callable[[], QueueStore] | None = None
-    reauth: Callable[[], None] | None = None
+    sso: Callable[[], None] | None = None
 
 
 _SLOT = _Slot()
@@ -56,7 +56,7 @@ def set_k8s_factory(factory: Callable[[], K8s] | None) -> None:
     _SLOT.k8s = None
 
 
-def set_object_store_factory(factory: Callable[[], LogStore] | None) -> None:
+def set_object_store_factory(factory: Callable[[], ObjectStore] | None) -> None:
     """Install the object-store factory."""
     _SLOT.object_store_factory = factory
     _SLOT.object_store = None
@@ -74,9 +74,9 @@ def set_queue_store_factory(factory: Callable[[], QueueStore] | None) -> None:
     _SLOT.queue_store = None
 
 
-def set_reauth(reauth: Callable[[], None] | None) -> None:
+def set_sso(sso: Callable[[], None] | None) -> None:
     """Install SSO login."""
-    _SLOT.reauth = reauth
+    _SLOT.sso = sso
 
 
 def _drop_k8s() -> None:
@@ -84,9 +84,9 @@ def _drop_k8s() -> None:
 
 
 def _ensure_sso() -> None:
-    reauth = _SLOT.reauth or request_sso
+    sso = _SLOT.sso or request_sso
     try:
-        reauth()
+        sso()
     except SsoLoginRequiredError:
         _drop_k8s()
         raise
@@ -95,7 +95,7 @@ def _ensure_sso() -> None:
 def get_logs_client() -> httpx2.AsyncClient:
     """Return the log client. Does not check SSO."""
     if _SLOT.logs is None:
-        factory = _SLOT.logs_factory or create_async_client
+        factory = _SLOT.logs_factory or create_logs_client
         _SLOT.logs = factory()
     return _SLOT.logs
 
@@ -109,10 +109,10 @@ def get_k8s() -> K8s:
     return _SLOT.k8s
 
 
-def get_object_store() -> LogStore:
+def get_object_store() -> ObjectStore:
     """Return the object store. Does not check SSO."""
     if _SLOT.object_store is None:
-        factory = _SLOT.object_store_factory or live_log_store
+        factory = _SLOT.object_store_factory or live_object_store
         _SLOT.object_store = factory()
     return _SLOT.object_store
 
@@ -150,10 +150,10 @@ async def tool_boundary() -> AsyncGenerator[None]:
             )
         )
         raise ToolError(redact_text(gone)) from exc
-    except (K8sApiError, SettingsError) as exc:
+    except (K8sApiError, DomainError) as exc:
         raise ToolError(redact_text(str(exc))) from exc
     except Exception as exc:
-        if not sso_auth_expired(exc):
+        if not sso_needs_login(exc):
             raise
         _drop_k8s()
         try:

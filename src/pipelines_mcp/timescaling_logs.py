@@ -8,21 +8,21 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.logs import (
-    FULL_MAX_HITS,
+    FULL_MAX_LINES,
     TAIL_LINES,
     LogMode,
     cap_log_bytes,
     decode_log_cursor,
     encode_log_cursor,
-    token,
+    path_segment,
 )
 from pipelines_mcp.models import LogPage
 from pipelines_mcp.redact import redact_text
 
 if TYPE_CHECKING:
-    from pipelines_mcp.object_store import LogStore
+    from pipelines_mcp.object_store import ObjectStore
 
 _PREFERRED: Final = ("stderr", "controller", "stdout")
 
@@ -77,7 +77,7 @@ def _decode(key: str, raw: bytes) -> str:
         try:
             raw = gzip.decompress(raw)
         except OSError as exc:
-            raise SettingsError(reason="log store unreachable") from exc
+            raise DomainError(reason="object store unreachable") from exc
     return raw.decode("utf-8", errors="replace")
 
 
@@ -119,7 +119,7 @@ def _build_page(
                 drop_front = False
         case LogMode.FULL:
             start = 0 if prior_sa is None else prior_sa
-            window = lines[start : start + FULL_MAX_HITS]
+            window = lines[start : start + FULL_MAX_LINES]
             next_sa = start + len(window)
             overflow = next_sa < len(lines)
             drop_front = False
@@ -149,15 +149,15 @@ def _build_page(
 
 
 def fetch_timescaling_logs(
-    store: LogStore,
+    store: ObjectStore,
     request: TimescalingLogRequest,
 ) -> LogPage:
     """Fetch one capped timescaling log page."""
     normalized = replace(
         request,
-        client=token(request.client, "client"),
-        batchtime=token(request.batchtime, "batchtime"),
-        comptype=token(request.comptype, "comptype"),
+        client=path_segment(request.client, "client"),
+        batchtime=path_segment(request.batchtime, "batchtime"),
+        comptype=path_segment(request.comptype, "comptype"),
     )
     mode = LogMode.FULL if normalized.full else LogMode.TAIL
     prior_sa: int | None = None
@@ -170,7 +170,7 @@ def fetch_timescaling_logs(
             or payload.comptype != normalized.comptype
         )
         if mismatched:
-            raise SettingsError(reason="invalid cursor")
+            raise DomainError(reason="invalid cursor")
         prior_sa = payload.sa
     name = f"{normalized.client}_{normalized.batchtime}_{normalized.comptype}"
     prefixes = (

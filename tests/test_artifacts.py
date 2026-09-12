@@ -9,7 +9,7 @@ from pipelines_mcp.artifacts import (
     list_artifact_files,
     list_artifacts,
 )
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.models import (
     ArtifactFiles,
     ArtifactFolder,
@@ -83,10 +83,10 @@ def test_empty_prefix_returns_no_folders() -> None:
         ("acme", "202608", "x/y", "comptype"),
     ],
 )
-def test_bad_token_raises(
+def test_bad_path_segment_raises(
     client: str, batchtime: str, comptype: str, field: str
 ) -> None:
-    with pytest.raises(SettingsError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=f"empty {field}"):
         _ = list_artifacts(FakeStore(keys=()), client, batchtime, comptype)
 
 
@@ -143,10 +143,10 @@ def test_skips_the_prefix_key() -> None:
         ("acme", "202608", "dashboard", "a/b", "folder"),
     ],
 )
-def test_bad_file_token_raises(
+def test_bad_file_path_segment_raises(
     client: str, batchtime: str, comptype: str, folder: str, field: str
 ) -> None:
-    with pytest.raises(SettingsError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=f"empty {field}"):
         _ = list_artifact_files(
             FakeStore(keys=()), client, batchtime, comptype, folder
         )
@@ -164,7 +164,7 @@ class BytesStore:
         self.reads.append(key)
         body = self.objects.get(key)
         if body is None:
-            raise SettingsError(reason="object not found")
+            raise DomainError(reason="object not found")
         return body
 
 
@@ -247,7 +247,7 @@ def test_rejects_parquet_extension_without_read() -> None:
             ),
         }
     )
-    with pytest.raises(SettingsError, match="parquet is not text"):
+    with pytest.raises(DomainError, match="parquet is not text"):
         _ = get_artifact_text(
             store, _text_request(key="model_input/part-0.parquet")
         )
@@ -259,7 +259,7 @@ def test_rejects_parquet_magic_without_returning_body() -> None:
     store = BytesStore(
         objects={"202608/acme/dashboard/timescaling/model_input/part-0.bin": body}
     )
-    with pytest.raises(SettingsError, match="parquet is not text") as caught:
+    with pytest.raises(DomainError, match="parquet is not text") as caught:
         _ = get_artifact_text(store, _text_request(key="model_input/part-0.bin"))
     assert store.reads == [
         "202608/acme/dashboard/timescaling/model_input/part-0.bin",
@@ -267,8 +267,8 @@ def test_rejects_parquet_magic_without_returning_body() -> None:
     assert "secret-bytes-not-for-output" not in str(caught.value)
 
 
-def test_missing_object_raises_settings_error() -> None:
-    with pytest.raises(SettingsError, match="object not found"):
+def test_missing_object_raises_domain_error() -> None:
+    with pytest.raises(DomainError, match="object not found"):
         _ = get_artifact_text(BytesStore(objects={}), _text_request())
 
 
@@ -283,10 +283,10 @@ def test_missing_object_raises_settings_error() -> None:
         ("acme", "202608", "dashboard", "a/b", "folder"),
     ],
 )
-def test_bad_text_token_raises(
+def test_bad_text_path_segment_raises(
     client: str, batchtime: str, comptype: str, folder: str, field: str
 ) -> None:
-    with pytest.raises(SettingsError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=f"empty {field}"):
         _ = get_artifact_text(
             BytesStore(objects={}),
             ArtifactTextRequest(
@@ -304,5 +304,5 @@ def test_bad_text_token_raises(
     ["", "  ", "/model_input/part-0.json", "foo/../bar.json", "foo//bar.json", "foo/"],
 )
 def test_bad_key_raises(key: str) -> None:
-    with pytest.raises(SettingsError, match="empty key"):
+    with pytest.raises(DomainError, match="empty key"):
         _ = get_artifact_text(BytesStore(objects={}), _text_request(key=key))

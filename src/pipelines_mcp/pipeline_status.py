@@ -12,8 +12,8 @@ from google.protobuf import json_format
 from pipeline_service_client.client import PipelineServiceClient
 from pipeline_service_client.errors import PipelineServiceClientError
 
-from pipelines_mcp.errors import SettingsError
-from pipelines_mcp.models import PipelineStatus, PipelineStepStatus
+from pipelines_mcp.errors import DomainError
+from pipelines_mcp.models import PipelineStatus, PipelineStep
 from pipelines_mcp.settings import load_pipeline_auth
 
 
@@ -37,13 +37,13 @@ class _ClientStatusStore:
                 if "PERMISSION_DENIED" in text or "NOT_FOUND" in text
                 else "pipeline status failed"
             )
-            raise SettingsError(reason=reason) from exc
-        steps: list[PipelineStepStatus] = []
+            raise DomainError(reason=reason) from exc
+        steps: list[PipelineStep] = []
         for index, step in enumerate(info.steps):
             config = step.config
             raw = None if config is None else config.arguments
             steps.append(
-                PipelineStepStatus(
+                PipelineStep(
                     step_index=index,
                     name=step.name,
                     arguments="{}"
@@ -75,5 +75,5 @@ def live_status_store() -> StatusStore:
             password=auth.password.get_secret_value(),
         )
     except PipelineServiceClientError as exc:
-        raise SettingsError(reason="pipeline status failed") from exc
+        raise DomainError(reason="pipeline status failed") from exc
     return _ClientStatusStore(client=client)

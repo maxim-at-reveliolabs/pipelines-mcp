@@ -10,15 +10,15 @@ from typing import TYPE_CHECKING
 import pytest
 
 from pipelines_mcp.eks_token import (
-    CachedCluster,
     EksAuth,
+    EksCluster,
     KubeClientConfig,
     PresignRequest,
     TokenMint,
-    eks_auth_from_settings,
+    live_eks_auth,
     mint_token,
 )
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.k8s import live_k8s
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ _PRESIGNED: str = (
     "&Version=2011-06-15&X-Amz-Algorithm=AWS4-HMAC-SHA256"
     "&X-Amz-SignedHeaders=host%3Bx-k8s-aws-id"
 )
-_CLUSTER = CachedCluster(
+_CLUSTER = EksCluster(
     endpoint="https://eks.ap-south-1.example.test",
     ca_pem=_PEM,
 )
@@ -83,9 +83,9 @@ class FakeKubeConfig:
 def _auth(
     signer: FakeSigner,
     clock: FakeClock,
-    cluster: CachedCluster = _CLUSTER,
+    cluster: EksCluster = _CLUSTER,
 ) -> EksAuth:
-    return eks_auth_from_settings(
+    return live_eks_auth(
         signer=signer,
         cluster=cluster,
         clock=clock.now,
@@ -160,10 +160,10 @@ def test_bind_sets_host_ca_bearer_and_refresh_hook() -> None:
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
-def test_from_settings_uses_cluster_name_and_region() -> None:
+def test_live_eks_auth_uses_cluster_name_and_region() -> None:
     signer = FakeSigner()
     clock = FakeClock()
-    auth = eks_auth_from_settings(
+    auth = live_eks_auth(
         signer=signer,
         cluster=_CLUSTER,
         clock=clock.now,
@@ -176,10 +176,10 @@ def test_from_settings_uses_cluster_name_and_region() -> None:
     )
 
 
-def test_from_settings_defaults_to_baked_dev_cluster() -> None:
+def test_live_eks_auth_defaults_to_baked_dev_cluster() -> None:
     signer = FakeSigner()
     clock = FakeClock()
-    auth = eks_auth_from_settings(signer=signer, clock=clock.now)
+    auth = live_eks_auth(signer=signer, clock=clock.now)
     config = FakeKubeConfig()
     auth.bind(config)
     assert _DEV_API in config.host
@@ -187,7 +187,7 @@ def test_from_settings_defaults_to_baked_dev_cluster() -> None:
 
 
 def test_cluster_from_ca_data_decodes_endpoint_and_ca() -> None:
-    cluster = CachedCluster.from_ca_data(
+    cluster = EksCluster.from_ca_data(
         endpoint="https://eks.example.test",
         ca_data=_CA_B64,
     )
@@ -206,8 +206,8 @@ def test_cluster_from_ca_data_decodes_endpoint_and_ca() -> None:
 def test_cluster_from_ca_data_rejects_bad_payload(
     endpoint: str, ca_data: str
 ) -> None:
-    with pytest.raises(SettingsError, match="cluster lookup failed"):
-        _ = CachedCluster.from_ca_data(endpoint=endpoint, ca_data=ca_data)
+    with pytest.raises(DomainError, match="cluster config is invalid"):
+        _ = EksCluster.from_ca_data(endpoint=endpoint, ca_data=ca_data)
 
 
 def test_live_k8s_does_not_set_aws_profile(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -220,7 +220,7 @@ def test_live_k8s_does_not_set_aws_profile(monkeypatch: pytest.MonkeyPatch) -> N
             config.api_key["BearerToken"] = "k8s-aws-v1.token"
 
     monkeypatch.setattr(
-        "pipelines_mcp.eks_token.eks_auth_from_settings",
+        "pipelines_mcp.eks_token.live_eks_auth",
         _Auth,
     )
     client = live_k8s()

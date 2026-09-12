@@ -8,7 +8,7 @@ from json import JSONDecodeError
 from pipelines_validator import validate
 from pydantic import TypeAdapter, ValidationError
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.models import PipelineConfigCheck
 
 type JsonValue = (
@@ -30,7 +30,7 @@ def check_pipeline_config(arguments: str) -> PipelineConfigCheck:
     try:
         outcome = PipelineConfigCheck.model_validate(validate(config))
     except (RuntimeError, JSONDecodeError, ValidationError) as exc:
-        raise SettingsError(reason="pipeline config check failed") from exc
+        raise DomainError(reason="pipeline config check failed") from exc
     if outcome.valid:
         return PipelineConfigCheck(valid=True, error=None)
     return outcome

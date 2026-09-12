@@ -3,8 +3,8 @@ from dataclasses import is_dataclass
 import pytest
 
 from pipelines_mcp.errors import (
+    DomainError,
     NotFoundError,
-    SettingsError,
     SsoLoginRequiredError,
 )
 from pipelines_mcp.models import (
@@ -16,7 +16,7 @@ from pipelines_mcp.models import (
 @pytest.mark.parametrize(
     ("error", "text"),
     [
-        (SettingsError(reason="missing field"), "missing field"),
+        (DomainError(reason="missing field"), "missing field"),
         (NotFoundError(entity="request"), "request not found"),
         (
             SsoLoginRequiredError(url="https://example.test/login"),

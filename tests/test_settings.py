@@ -4,7 +4,7 @@ from typing import Final
 
 import pytest
 
-from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.errors import DomainError
 from pipelines_mcp.settings import (
     AWS_PROFILE,
     AWS_REGION,
@@ -29,7 +29,7 @@ def _reader(secrets: Mapping[str, Mapping[str, str]]) -> Callable[[str], str]:
         try:
             return json.dumps(secrets[secret_id])
         except KeyError:
-            raise SettingsError(reason="secret is missing") from None
+            raise DomainError(reason="secret is missing") from None
 
     return read
 
@@ -46,7 +46,7 @@ def test_load_es_auth_raises_when_secret_json_is_bad() -> None:
         _ = secret_id
         return "not-json"
 
-    with pytest.raises(SettingsError):
+    with pytest.raises(DomainError):
         _ = load_es_auth(read_secret=read)
 
 
@@ -54,13 +54,13 @@ def test_load_es_auth_raises_when_password_is_blank() -> None:
     reader = _reader(
         {"elasticsearch/elastic": {"username": "elastic", "password": "  "}}
     )
-    with pytest.raises(SettingsError):
+    with pytest.raises(DomainError):
         _ = load_es_auth(read_secret=reader)
 
 
 def test_load_es_auth_raises_when_secret_keys_missing() -> None:
     reader = _reader({"elasticsearch/elastic": {"username": "elastic"}})
-    with pytest.raises(SettingsError):
+    with pytest.raises(DomainError):
         _ = load_es_auth(read_secret=reader)
 
 
