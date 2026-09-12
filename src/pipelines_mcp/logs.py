@@ -81,7 +81,6 @@ class LogRequest:
     log_kind: LogKind
     cursor: str | None = None
     full: bool = False
-    size: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,6 +286,7 @@ def _normalize(request: LogRequest) -> LogRequest:
 async def fetch_logs(
     client: httpx2.AsyncClient,
     request: LogRequest,
+    size: int | None = None,
 ) -> LogPage:
     """Fetch one capped log page from Elasticsearch."""
     normalized = _normalize(request)
@@ -299,14 +299,14 @@ async def fetch_logs(
     match mode:
         case LogMode.TAIL:
             order = "asc" if normalized.cursor is not None else "desc"
-            size = TAIL_LINES
+            page_size = TAIL_LINES
         case LogMode.FULL:
             order = "asc"
-            size = FULL_MAX_HITS if normalized.size is None else normalized.size
+            page_size = FULL_MAX_HITS if size is None else size
     content = json.dumps(
         _search_body(
             normalized,
-            _SearchPage(order=order, size=size, search_after=prior_sa),
+            _SearchPage(order=order, size=page_size, search_after=prior_sa),
         ),
         separators=(",", ":"),
     ).encode("utf-8")
@@ -324,5 +324,5 @@ async def fetch_logs(
     parsed = _EsResponse.model_validate_json(response.content)
     return _build_page(
         _to_hits(parsed),
-        _PageCtx(request=normalized, mode=mode, prior_sa=prior_sa, size=size),
+        _PageCtx(request=normalized, mode=mode, prior_sa=prior_sa, size=page_size),
     )

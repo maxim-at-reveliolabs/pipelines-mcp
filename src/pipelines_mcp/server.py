@@ -220,8 +220,8 @@ async def get_pipeline_start(request_id: str) -> PipelineStart:
             request_id=query,
             log_kind=LogKind.SERVICE,
             full=True,
-            size=20,
         ),
+        size=20,
     )
     return parse_start(page.lines)
 
