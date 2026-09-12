@@ -11,6 +11,8 @@ from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.settings import AWS_REGION
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from types_boto3_s3.client import S3Client
     from types_boto3_s3.type_defs import ListObjectsV2RequestTypeDef
 
@@ -24,16 +26,23 @@ class LogStore(Protocol):
     def get_bytes(self, key: str) -> bytes: ...
 
 
+def _s3[T](read: Callable[[], T]) -> T:
+    from botocore.exceptions import ClientError  # noqa: PLC0415  # load on use
+
+    try:
+        return read()
+    except ClientError as exc:
+        raise SettingsError(reason="log store unreachable") from exc
+
+
 @dataclass(frozen=True, slots=True)
 class _BotoLogStore:
     client: S3Client
 
     def list_keys(self, prefix: str) -> tuple[str, ...]:
-        from botocore.exceptions import ClientError  # noqa: PLC0415  # load on use
-
-        keys: list[str] = []
-        token: str | None = None
-        try:
+        def collect() -> tuple[str, ...]:
+            keys: list[str] = []
+            token: str | None = None
             while True:
                 request: ListObjectsV2RequestTypeDef = {
                     "Bucket": _BUCKET,
@@ -50,16 +59,11 @@ class _BotoLogStore:
                 if response.get("IsTruncated") is not True or not nxt:
                     return tuple(keys)
                 token = nxt
-        except ClientError as exc:
-            raise SettingsError(reason="log store unreachable") from exc
+
+        return _s3(collect)
 
     def get_bytes(self, key: str) -> bytes:
-        from botocore.exceptions import ClientError  # noqa: PLC0415  # load on use
-
-        try:
-            response = self.client.get_object(Bucket=_BUCKET, Key=key)
-        except ClientError as exc:
-            raise SettingsError(reason="log store unreachable") from exc
+        response = _s3(lambda: self.client.get_object(Bucket=_BUCKET, Key=key))
         return response["Body"].read()
 
 
