@@ -333,23 +333,38 @@ async def test_get_pipeline_start_asks_for_twenty_lines() -> None:
 
 
 @pytest.mark.parametrize(
-    ("tool", "filter_text"),
+    ("tool", "args", "filter_text"),
     [
-        ("search_pipeline_log", 'kubernetes.pod_name:"req-1"'),
-        ("search_pipeline_service_log", 'parsed.pipeline-id:"req-1"'),
+        (
+            "search_pipeline_log",
+            {"request_id": "req-1", "query": "boom"},
+            'kubernetes.pod_name:"req-1"',
+        ),
+        (
+            "search_pipeline_service_log",
+            {"request_id": "req-1", "query": "boom"},
+            'parsed.pipeline-id:"req-1"',
+        ),
+        (
+            "search_pipeline_step_log",
+            {
+                "request_id": "req-1",
+                "step_index": 2,
+                "replica": 0,
+                "query": "boom",
+            },
+            'kubernetes.pod_name:"pipelines-req-1-2-0"',
+        ),
     ],
 )
 async def test_search_log_query_string_has_filter_and_text(
-    tool: str, filter_text: str
+    tool: str, args: dict[str, str | int], filter_text: str
 ) -> None:
     hits: list[dict[str, JsonValue]] = [
         {"_source": {"log": "boom"}, "sort": ["t1"]},
     ]
     async with _wired(hits=hits) as recorder:
-        result = await mcp.call_tool(
-            tool,
-            {"request_id": "req-1", "query": "boom"},
-        )
+        result = await mcp.call_tool(tool, args)
     value = _page_from_tool(result)
     assert value["lines"] == ["boom"]
     query = recorder.bodies[0]["query"]
@@ -377,25 +392,44 @@ async def test_get_pipeline_step_log_filters_by_job_name() -> None:
     assert clause["query"] == 'kubernetes.pod_name:"pipelines-req-1-2-0"'
 
 
-async def test_get_pipeline_step_log_rejects_uuid_cursor() -> None:
+@pytest.mark.parametrize(
+    ("source", "source_args", "target", "target_args"),
+    [
+        (
+            "get_pipeline_log",
+            {"request_id": "req-1"},
+            "get_pipeline_step_log",
+            {"request_id": "req-1", "step_index": 2, "replica": 0},
+        ),
+        (
+            "search_pipeline_log",
+            {"request_id": "req-1", "query": "boom"},
+            "search_pipeline_step_log",
+            {
+                "request_id": "req-1",
+                "step_index": 2,
+                "replica": 0,
+                "query": "boom",
+            },
+        ),
+    ],
+)
+async def test_step_log_rejects_uuid_cursor(
+    source: str,
+    source_args: dict[str, str],
+    target: str,
+    target_args: dict[str, str | int],
+) -> None:
     hits: list[dict[str, JsonValue]] = [
         {"_source": {"log": "mixed"}, "sort": ["t1"]},
     ]
     async with _wired(hits=hits):
-        mixed = await mcp.call_tool("get_pipeline_log", {"request_id": "req-1"})
+        mixed = await mcp.call_tool(source, source_args)
         page = _page_from_tool(mixed)
         cursor = page["cursor"]
         assert isinstance(cursor, str)
         with pytest.raises(ToolError, match="invalid cursor"):
-            _ = await mcp.call_tool(
-                "get_pipeline_step_log",
-                {
-                    "request_id": "req-1",
-                    "step_index": 2,
-                    "replica": 0,
-                    "cursor": cursor,
-                },
-            )
+            _ = await mcp.call_tool(target, {**target_args, "cursor": cursor})
 
 
 async def test_timescaling_log_tool_reads_store() -> None:

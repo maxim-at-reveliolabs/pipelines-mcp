@@ -77,7 +77,8 @@ get_pipeline_queue to see if the run is waiting in the queue.
 get_pipeline_images returns current rust and lifecycle image versions
 from pipeline service metadata. It does not start a pipeline.
 When a run has many steps, use get_pipeline_step_log instead of mixed
-get_pipeline_log.
+get_pipeline_log. Search with search_pipeline_step_log instead of mixed
+search_pipeline_log.
 search_pipeline_log and search_pipeline_service_log find matching lines
 in those logs. query is required.
 get_pipeline_start returns the keys from the service line that starts the
@@ -344,6 +345,30 @@ async def search_pipeline_log(
     query is required and must not be empty. Same cursor rules as get_pipeline_log.
     """
     return await _es_log(request_id, LogKind.WORKER, cursor, full=full, query=query)
+
+
+@_tool
+async def search_pipeline_step_log(  # noqa: PLR0913  # MCP tool args
+    request_id: str,
+    step_index: int,
+    replica: int,
+    query: str,
+    cursor: str | None = None,
+    *,
+    full: bool = False,
+) -> LogPage:
+    """Find matching worker log lines for one job.
+
+    Use this when a run has many steps. search_pipeline_log mixes every step.
+    query is required and must not be empty. Same cursor rules as get_pipeline_log.
+    """
+    return await _es_log(
+        _job_name(request_id, step_index, replica),
+        LogKind.WORKER,
+        cursor,
+        full=full,
+        query=query,
+    )
 
 
 @_tool
