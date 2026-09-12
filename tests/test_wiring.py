@@ -18,7 +18,7 @@ from mcp.types import CallToolResult, InputRequiredResult
 from pydantic import SecretStr, TypeAdapter
 
 from pipelines_mcp.k8s import K8s, K8sApiError
-from pipelines_mcp.logs import create_async_client
+from pipelines_mcp.logs import JsonValue, create_async_client
 from pipelines_mcp.server import mcp
 from pipelines_mcp.server_app import (
     set_k8s_factory,
@@ -29,10 +29,6 @@ from pipelines_mcp.server_app import (
 from pipelines_mcp.settings import EsAuth
 
 pytestmark = pytest.mark.anyio
-
-type JsonValue = (
-    str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
-)
 
 _JSON_OBJECT: Final = TypeAdapter(dict[str, JsonValue])
 

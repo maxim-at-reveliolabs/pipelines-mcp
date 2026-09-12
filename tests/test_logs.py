@@ -7,16 +7,13 @@ from pydantic import SecretStr, TypeAdapter
 
 from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.logs import (
+    JsonValue,
     LogRequest,
     create_async_client,
     fetch_logs,
 )
 from pipelines_mcp.models import LogKind, LogPage
 from pipelines_mcp.settings import EsAuth
-
-type JsonValue = (
-    str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
-)
 
 pytestmark = pytest.mark.anyio
 
