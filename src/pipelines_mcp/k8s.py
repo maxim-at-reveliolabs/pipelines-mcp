@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class K8sApiError(Exception):
-    """Injected client HTTP error. status 404 means missing.
+    """Cluster HTTP error. status 404 means missing.
 
     Not frozen: Exception must accept __traceback__.
     """
@@ -57,7 +57,7 @@ class K8sApiError(Exception):
 
 
 class BatchApi(Protocol):
-    """Injected batch API. Not a live cluster client."""
+    """Batch job reads."""
 
     def read_namespaced_job(self, name: str, namespace: str) -> V1Job: ...
 
@@ -65,7 +65,7 @@ class BatchApi(Protocol):
 
 
 class CoreApi(Protocol):
-    """Injected core API. Not a live cluster client."""
+    """Pod reads."""
 
     def list_namespaced_pod(
         self, namespace: str, *, label_selector: str
@@ -82,9 +82,22 @@ def _is_core(api: object) -> TypeIs[CoreApi]:
     return hasattr(api, "read_namespaced_pod") and hasattr(api, "list_namespaced_pod")
 
 
-def _found[T](read: Callable[[], T]) -> T | None:
+def _api[T](read: Callable[[], T]) -> T:
+    """Run a cluster call. HTTP errors become K8sApiError."""
     try:
         return read()
+    except K8sApiError:
+        raise
+    except Exception as exc:
+        status = getattr(exc, "status", None)
+        if not isinstance(status, int):
+            raise
+        raise K8sApiError(status=status) from exc
+
+
+def _found[T](read: Callable[[], T]) -> T | None:
+    try:
+        return _api(read)
     except K8sApiError as exc:
         if exc.status == HTTPStatus.NOT_FOUND:
             return None
@@ -245,8 +258,10 @@ class K8s:
         raw = self._read_job(name)
         if raw is None:
             return ()
-        listed = self.core.list_namespaced_pod(
-            self.namespace, label_selector=_pod_selector(raw, name)
+        listed = _api(
+            lambda: self.core.list_namespaced_pod(
+                self.namespace, label_selector=_pod_selector(raw, name)
+            )
         )
         items = listed.items
         if items is None:
@@ -279,7 +294,7 @@ class K8s:
         limit: int,
     ) -> tuple[Job, ...]:
         """List jobs, optionally filtered by status and name prefix."""
-        listed = self.batch.list_namespaced_job(self.namespace)
+        listed = _api(lambda: self.batch.list_namespaced_job(self.namespace))
         items = listed.items
         if items is None:
             return ()
@@ -305,59 +320,9 @@ class K8s:
         return _object_config(self._require_pod(pod_name), pod_name)
 
 
-def _status_of(exc: BaseException) -> int:
-    status = getattr(exc, "status", None)
-    if isinstance(status, int):
-        return status
-    return 500
-
-
-def _call[T](error_type: type[BaseException], read: Callable[[], T]) -> T:
-    try:
-        return read()
-    except error_type as exc:
-        raise K8sApiError(status=_status_of(exc)) from exc
-
-
-@dataclass(frozen=True, slots=True)
-class _LiveBatch:
-    api: BatchApi
-    error_type: type[BaseException]
-
-    def read_namespaced_job(self, name: str, namespace: str) -> V1Job:
-        return _call(
-            self.error_type, lambda: self.api.read_namespaced_job(name, namespace)
-        )
-
-    def list_namespaced_job(self, namespace: str) -> V1JobList:
-        return _call(self.error_type, lambda: self.api.list_namespaced_job(namespace))
-
-
-@dataclass(frozen=True, slots=True)
-class _LiveCore:
-    api: CoreApi
-    error_type: type[BaseException]
-
-    def list_namespaced_pod(
-        self, namespace: str, *, label_selector: str
-    ) -> V1PodList:
-        return _call(
-            self.error_type,
-            lambda: self.api.list_namespaced_pod(
-                namespace, label_selector=label_selector
-            ),
-        )
-
-    def read_namespaced_pod(self, name: str, namespace: str) -> V1Pod:
-        return _call(
-            self.error_type, lambda: self.api.read_namespaced_pod(name, namespace)
-        )
-
-
 def live_k8s() -> K8s:
     """Build a live cluster client from local kube config."""
     from kubernetes.client import (  # noqa: PLC0415  # load on use
-        ApiException,
         BatchV1Api,
         CoreV1Api,
     )
@@ -371,7 +336,4 @@ def live_k8s() -> K8s:
         raise SettingsError(reason="batch api is missing")
     if not _is_core(core):
         raise SettingsError(reason="core api is missing")
-    return K8s(
-        batch=_LiveBatch(batch, ApiException),
-        core=_LiveCore(core, ApiException),
-    )
+    return K8s(batch=batch, core=core)
