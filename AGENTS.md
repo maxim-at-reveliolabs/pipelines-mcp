@@ -46,6 +46,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 - Lifecycle unload files: `{batchtime}/rust-unloads/{request_id}/{folder}/` keys relative to that prefix
 - Lifecycle unload text: `{batchtime}/rust-unloads/{request_id}/{folder}/{key}` short head of one json/jsonl/log object; not parquet
 - Lifecycle jsonl names: `{batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/`
+- Lifecycle jsonl text: `{batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/{key}` short head of one jsonl object; not parquet
 
 ## Conventions
 

@@ -21,8 +21,11 @@ class FakeStore:
             key for key in sorted(self.objects) if key.startswith(prefix)
         )
 
-    def get_bytes(self, key: str) -> bytes:
-        return self.objects[key]
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+        body = self.objects[key]
+        if max_bytes is None:
+            return body
+        return body[:max_bytes]
 
 
 def _request(

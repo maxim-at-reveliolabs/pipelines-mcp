@@ -27,7 +27,8 @@ class FakeStore:
         self.prefixes.append(prefix)
         return tuple(key for key in self.keys if key.startswith(prefix))
 
-    def get_bytes(self, key: str) -> bytes:
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+        _ = max_bytes
         raise AssertionError(key)
 
 
@@ -156,16 +157,20 @@ def test_bad_file_path_segment_raises(
 class BytesStore:
     objects: dict[str, bytes]
     reads: list[str] = field(default_factory=list)
+    limits: list[int | None] = field(default_factory=list)
 
     def list_keys(self, prefix: str) -> tuple[str, ...]:
         return tuple(key for key in self.objects if key.startswith(prefix))
 
-    def get_bytes(self, key: str) -> bytes:
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
         self.reads.append(key)
+        self.limits.append(max_bytes)
         body = self.objects.get(key)
         if body is None:
             raise DomainError(reason="object not found")
-        return body
+        if max_bytes is None:
+            return body
+        return body[:max_bytes]
 
 
 def _text_request(*, key: str = "model_input/part-0.json") -> ArtifactTextRequest:
@@ -217,6 +222,7 @@ def test_gunzips_when_key_ends_with_gz() -> None:
     )
     result = get_artifact_text(store, _text_request(key="logs/stderr.gz"))
     assert result.text == "gpu-ok\n"
+    assert store.limits == [None]
 
 
 def test_caps_text_to_log_byte_cap() -> None:
@@ -227,6 +233,7 @@ def test_caps_text_to_log_byte_cap() -> None:
     )
     result = get_artifact_text(store, _text_request(key="logs/stderr"))
     assert result.text == "x" * 32768
+    assert store.limits == [32768]
 
 
 def test_decodes_utf8_with_replace() -> None:

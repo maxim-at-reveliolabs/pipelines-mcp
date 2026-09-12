@@ -14,7 +14,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from types_boto3_s3.client import S3Client
-    from types_boto3_s3.type_defs import ListObjectsV2RequestTypeDef
+    from types_boto3_s3.type_defs import (
+        GetObjectRequestTypeDef,
+        ListObjectsV2RequestTypeDef,
+    )
 
 _BUCKET: Final = "revelio-automated-pipelines"
 
@@ -23,7 +26,7 @@ class ObjectStore(Protocol):
     """List and read objects. Injected."""
 
     def list_keys(self, prefix: str) -> tuple[str, ...]: ...
-    def get_bytes(self, key: str) -> bytes: ...
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes: ...
 
 
 def _s3[T](read: Callable[[], T]) -> T:
@@ -62,9 +65,15 @@ class _BotoObjectStore:
 
         return _s3(collect)
 
-    def get_bytes(self, key: str) -> bytes:
-        response = _s3(lambda: self.client.get_object(Bucket=_BUCKET, Key=key))
-        return response["Body"].read()
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+        def read() -> bytes:
+            request: GetObjectRequestTypeDef = {"Bucket": _BUCKET, "Key": key}
+            if max_bytes is not None:
+                request["Range"] = f"bytes=0-{max_bytes - 1}"
+            response = self.client.get_object(**request)
+            return response["Body"].read()
+
+        return _s3(read)
 
 
 def live_object_store() -> ObjectStore:

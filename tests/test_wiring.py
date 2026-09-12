@@ -441,7 +441,8 @@ async def test_timescaling_log_tool_reads_store() -> None:
                 "202608/acme/dashboard/timescaling/logs/c/j-1/steps/s-1/stderr",
             )
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
             _ = key
             return b"gpu-fail\n"
 
@@ -471,7 +472,8 @@ async def test_list_pipeline_artifacts_tool_reads_store() -> None:
                 "202608/acme/dashboard/timescaling/logs/b",
             )
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
             raise AssertionError(key)
 
     set_object_store_factory(Store)
@@ -504,7 +506,8 @@ async def test_list_pipeline_artifact_files_tool_reads_store() -> None:
                 "202608/acme/dashboard/timescaling/model_output/part-1.json",
             )
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
             raise AssertionError(key)
 
     set_object_store_factory(Store)
@@ -535,7 +538,8 @@ async def test_get_pipeline_artifact_text_tool_reads_store() -> None:
             _ = prefix
             return ()
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
             assert key == "202608/acme/dashboard/timescaling/model_input/part-0.json"
             return b'{"ok": true}\n'
 
@@ -573,7 +577,8 @@ async def test_list_pipeline_lifecycle_artifacts_tool_reads_store() -> None:
                 return (f"{prefix}company.jsonl",)
             return ()
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
             raise AssertionError(key)
 
     set_object_store_factory(Store)
@@ -605,7 +610,8 @@ async def test_list_pipeline_lifecycle_artifact_files_tool_reads_store() -> None
                 f"202608/rust-unloads/{request_id}/reference/nested/data.parquet",
             )
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
             raise AssertionError(key)
 
     set_object_store_factory(Store)
@@ -637,7 +643,8 @@ async def test_get_pipeline_lifecycle_artifact_text_tool_reads_store() -> None:
             _ = prefix
             return ()
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
             assert key == f"202608/rust-unloads/{request_id}/reference/plan.json"
             return b'{"ok": true}\n'
 
@@ -658,3 +665,34 @@ async def test_get_pipeline_lifecycle_artifact_text_tool_reads_store() -> None:
     assert value["prefix"] == f"202608/rust-unloads/{request_id}/reference/"
     assert value["key"] == "plan.json"
     assert value["text"] == '{"ok": true}\n'
+
+
+async def test_get_pipeline_lifecycle_jsonl_text_tool_reads_store() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def list_keys(self, prefix: str) -> tuple[str, ...]:
+            _ = prefix
+            return ()
+
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+            _ = max_bytes
+            assert key == (
+                "202608/input_pipelines/main/final/globals_rs/"
+                "timescaling_v4/company.jsonl"
+            )
+            return b'{"entity": "acme"}\n'
+
+    set_object_store_factory(Store)
+    try:
+        result = await mcp.call_tool(
+            "get_pipeline_lifecycle_jsonl_text",
+            {"batchtime": "202608", "key": "company.jsonl"},
+        )
+    finally:
+        set_object_store_factory(None)
+    value = _page_from_tool(result)
+    assert value["prefix"] == (
+        "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
+    )
+    assert value["key"] == "company.jsonl"
+    assert value["text"] == '{"entity": "acme"}\n'

@@ -16,6 +16,7 @@ from pipelines_mcp.artifacts import (
 from pipelines_mcp.lifecycle_artifacts import (
     LifecycleArtifactTextRequest,
     get_lifecycle_artifact_text,
+    get_lifecycle_jsonl_text,
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
 )
@@ -105,6 +106,8 @@ list_pipeline_lifecycle_artifact_files to see files inside it.
 get_pipeline_lifecycle_artifact_text reads a short head of one small
 json/jsonl/log object. Pass the relative key from
 list_pipeline_lifecycle_artifact_files. Do not use it for parquet.
+get_pipeline_lifecycle_jsonl_text reads a short head of one shared jsonl
+name from list_pipeline_lifecycle_artifacts. Do not use it for parquet.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
 Use the log tools instead.
@@ -568,6 +571,24 @@ async def get_pipeline_lifecycle_artifact_text(
             folder=folder,
             key=key,
         ),
+    )
+
+
+@_tool
+async def get_pipeline_lifecycle_jsonl_text(
+    batchtime: str,
+    key: str,
+) -> ArtifactText:
+    """Short text head of one shared jsonl object.
+
+    After list_pipeline_lifecycle_artifacts, pass a jsonl name such as
+    company.jsonl. Do not use it for parquet.
+    """
+    return await run_sync(
+        get_lifecycle_jsonl_text,
+        get_object_store(),
+        batchtime,
+        key,
     )
 
 

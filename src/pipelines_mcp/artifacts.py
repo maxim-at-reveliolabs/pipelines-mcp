@@ -100,7 +100,10 @@ def object_text(store: ObjectStore, prefix: str, key: str) -> ArtifactText:
         raise DomainError(reason="empty key")
     if stripped.lower().endswith(".parquet"):
         raise DomainError(reason="parquet is not text")
-    raw = store.get_bytes(f"{prefix}{stripped}")
+    raw = store.get_bytes(
+        f"{prefix}{stripped}",
+        max_bytes=None if stripped.endswith(".gz") else _TEXT_CAP,
+    )
     body = raw
     if stripped.endswith(".gz"):
         try:

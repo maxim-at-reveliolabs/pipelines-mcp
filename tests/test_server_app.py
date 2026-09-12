@@ -83,8 +83,9 @@ async def test_get_object_store_does_not_check_sso() -> None:
             _ = prefix
             return ()
 
-        def get_bytes(self, key: str) -> bytes:
+        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
             _ = key
+            _ = max_bytes
             return b""
 
     store = Store()

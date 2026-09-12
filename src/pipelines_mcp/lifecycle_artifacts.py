@@ -25,6 +25,13 @@ def _unloads_prefix(batchtime: str, request_id: str) -> str:
     )
 
 
+def _jsonl_prefix(batchtime: str) -> str:
+    return (
+        f"{path_segment(batchtime, 'batchtime')}/"
+        "input_pipelines/main/final/globals_rs/timescaling_v4/"
+    )
+
+
 def list_lifecycle_artifacts(
     store: ObjectStore,
     batchtime: str,
@@ -32,10 +39,7 @@ def list_lifecycle_artifacts(
 ) -> LifecycleArtifacts:
     """List unload folders and shared jsonl names for one lifecycle run."""
     unloads_prefix = _unloads_prefix(batchtime, request_id)
-    jsonl_prefix = (
-        f"{path_segment(batchtime, 'batchtime')}/"
-        "input_pipelines/main/final/globals_rs/timescaling_v4/"
-    )
+    jsonl_prefix = _jsonl_prefix(batchtime)
     folders = child_folders(store, unloads_prefix)
     names: set[str] = set()
     for key in store.list_keys(jsonl_prefix):
@@ -85,3 +89,12 @@ def get_lifecycle_artifact_text(
         ),
         request.key,
     )
+
+
+def get_lifecycle_jsonl_text(
+    store: ObjectStore,
+    batchtime: str,
+    key: str,
+) -> ArtifactText:
+    """Return a short redacted text head of one shared jsonl object."""
+    return object_text(store, _jsonl_prefix(batchtime), key)

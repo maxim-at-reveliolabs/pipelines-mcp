@@ -6,6 +6,7 @@ from pipelines_mcp.errors import DomainError
 from pipelines_mcp.lifecycle_artifacts import (
     LifecycleArtifactTextRequest,
     get_lifecycle_artifact_text,
+    get_lifecycle_jsonl_text,
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
 )
@@ -38,7 +39,8 @@ class FakeStore:
         self.prefixes.append(prefix)
         return tuple(key for key in self.keys if key.startswith(prefix))
 
-    def get_bytes(self, key: str) -> bytes:
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+        _ = max_bytes
         raise AssertionError(key)
 
 
@@ -158,12 +160,14 @@ class BytesStore:
     def list_keys(self, prefix: str) -> tuple[str, ...]:
         return tuple(key for key in self.objects if key.startswith(prefix))
 
-    def get_bytes(self, key: str) -> bytes:
+    def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
         self.reads.append(key)
         body = self.objects.get(key)
         if body is None:
             raise DomainError(reason="object not found")
-        return body
+        if max_bytes is None:
+            return body
+        return body[:max_bytes]
 
 
 def test_reads_json_text_for_relative_key_with_slashes() -> None:
@@ -204,3 +208,20 @@ def test_bad_text_path_segment_raises(
                 key="plan.json",
             ),
         )
+
+
+def test_reads_shared_jsonl_text() -> None:
+    store = BytesStore(objects={f"{_JSONL}company.jsonl": b'{"entity": "acme"}\n'})
+    result = get_lifecycle_jsonl_text(store, "202608", "company.jsonl")
+    assert result == ArtifactText(
+        prefix=_JSONL,
+        key="company.jsonl",
+        text='{"entity": "acme"}\n',
+    )
+    assert store.reads == [f"{_JSONL}company.jsonl"]
+
+
+@pytest.mark.parametrize("batchtime", ["  ", "2026/08"])
+def test_bad_jsonl_batchtime_raises(batchtime: str) -> None:
+    with pytest.raises(DomainError, match="empty batchtime"):
+        _ = get_lifecycle_jsonl_text(BytesStore(objects={}), batchtime, "company.jsonl")
