@@ -272,11 +272,16 @@ def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
     )
 
 
+def nonempty(raw: str, field: str) -> str:
+    """Strip a required token. Empty fails."""
+    stripped = raw.strip()
+    if stripped == "":
+        raise SettingsError(reason=f"empty {field}")
+    return stripped
+
+
 def _normalize(request: LogRequest) -> LogRequest:
-    request_id = request.request_id.strip()
-    if request_id == "":
-        raise SettingsError(reason="empty request_id")
-    return replace(request, request_id=request_id)
+    return replace(request, request_id=nonempty(request.request_id, "request_id"))
 
 
 async def fetch_logs(

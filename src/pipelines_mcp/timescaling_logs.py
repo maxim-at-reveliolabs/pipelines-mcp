@@ -17,6 +17,7 @@ from pipelines_mcp.logs import (
     cap_log_bytes,
     decode_log_cursor,
     encode_log_cursor,
+    nonempty,
 )
 from pipelines_mcp.models import LogPage
 from pipelines_mcp.redact import redact_text
@@ -52,8 +53,8 @@ class _CursorPayload(BaseModel):
 
 
 def _token(raw: str, field: str) -> str:
-    stripped = raw.strip()
-    if stripped == "" or "/" in stripped:
+    stripped = nonempty(raw, field)
+    if "/" in stripped:
         raise SettingsError(reason=f"empty {field}")
     return stripped
 

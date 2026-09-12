@@ -7,8 +7,7 @@ from inspect import cleandoc
 from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
-from pipelines_mcp.errors import SettingsError
-from pipelines_mcp.logs import LogRequest, fetch_logs
+from pipelines_mcp.logs import LogRequest, fetch_logs, nonempty
 from pipelines_mcp.models import (
     Job,
     LogKind,
@@ -76,15 +75,8 @@ def _tool[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     return mcp.tool(description=description)(bound)
 
 
-def _nonempty(raw: str, field: str) -> str:
-    stripped = raw.strip()
-    if stripped == "":
-        raise SettingsError(reason=f"empty {field}")
-    return stripped
-
-
 def _job_name(request_id: str, step_index: int, replica: int) -> str:
-    return job_name(_nonempty(request_id, "request_id"), step_index, replica)
+    return job_name(nonempty(request_id, "request_id"), step_index, replica)
 
 
 @_tool
@@ -156,14 +148,14 @@ async def get_pipeline_job_config(
 @_tool
 async def get_pipeline_pod(pod_name: str) -> Pod:
     """Get one pod by pod_name from list_pipeline_pods."""
-    return await run_sync(get_k8s().get_pod, _nonempty(pod_name, "pod_name"))
+    return await run_sync(get_k8s().get_pod, nonempty(pod_name, "pod_name"))
 
 
 @_tool
 async def get_pipeline_pod_config(pod_name: str) -> ObjectConfig:
     """Full YAML for one pod by pod_name. Secrets are redacted."""
     return await run_sync(
-        get_k8s().pod_config, _nonempty(pod_name, "pod_name")
+        get_k8s().pod_config, nonempty(pod_name, "pod_name")
     )
 
 
@@ -179,7 +171,7 @@ async def get_pipeline_log(
     Empty until the worker is running. Default is the last 100 lines plus a
     cursor. Pass cursor to get only new lines. full=true still caps size.
     """
-    query = _nonempty(request_id, "request_id")
+    query = nonempty(request_id, "request_id")
     return await fetch_logs(
         get_logs_client(),
         LogRequest(
@@ -202,7 +194,7 @@ async def get_pipeline_service_log(
 
     Use with worker logs. Same cursor rules as get_pipeline_log.
     """
-    query = _nonempty(request_id, "request_id")
+    query = nonempty(request_id, "request_id")
     return await fetch_logs(
         get_logs_client(),
         LogRequest(
@@ -221,7 +213,7 @@ async def get_pipeline_start(request_id: str) -> PipelineStart:
     arguments stays the original JSON string. Use when the job is gone and you
     need those keys. Retry if the line is not there yet.
     """
-    query = _nonempty(request_id, "request_id")
+    query = nonempty(request_id, "request_id")
     page = await fetch_logs(
         get_logs_client(),
         LogRequest(
