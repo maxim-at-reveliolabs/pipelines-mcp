@@ -11,7 +11,6 @@ from os import environ
 from typing import TYPE_CHECKING, Protocol, TypeIs, override
 
 import yaml
-from anyio.to_thread import run_sync
 from pydantic import TypeAdapter
 
 from pipelines_mcp.errors import NotFoundError, SettingsError
@@ -357,39 +356,12 @@ class K8s:
     core: CoreApi
     namespace: str = "pipelines-prd"
 
-    async def get_job(self, name: JobName) -> Job:
+    def get_job(self, name: JobName) -> Job:
         """Read one job or raise NotFoundError."""
-        return await run_sync(self._get_job, name)
-
-    async def list_pods(self, name: JobName) -> tuple[Pod, ...]:
-        """List pods for a job. Empty if the job or pods are gone."""
-        return await run_sync(self._list_pods, name)
-
-    async def get_pod(self, pod_name: PodName) -> Pod:
-        """Read one pod or raise NotFoundError."""
-        return await run_sync(self._get_pod, pod_name)
-
-    async def list_jobs(
-        self,
-        status: str | None,
-        name_prefix: str | None,
-        limit: int,
-    ) -> tuple[Job, ...]:
-        """List jobs, optionally filtered by status and name prefix."""
-        return await run_sync(self._list_jobs, status, name_prefix, limit)
-
-    async def job_config(self, name: JobName) -> ObjectConfig:
-        """Read one job's redacted YAML config."""
-        return await run_sync(self._job_config, name)
-
-    async def pod_config(self, pod_name: PodName) -> ObjectConfig:
-        """Read one pod's redacted YAML config."""
-        return await run_sync(self._pod_config, pod_name)
-
-    def _get_job(self, name: JobName) -> Job:
         return _job_dto(self._require_job(name), name)
 
-    def _list_pods(self, name: JobName) -> tuple[Pod, ...]:
+    def list_pods(self, name: JobName) -> tuple[Pod, ...]:
+        """List pods for a job. Empty if the job or pods are gone."""
         raw = self._read_job(name)
         if raw is None:
             return ()
@@ -401,7 +373,8 @@ class K8s:
             return ()
         return tuple(_pod_dto(item, name) for item in items)
 
-    def _get_pod(self, pod_name: PodName) -> Pod:
+    def get_pod(self, pod_name: PodName) -> Pod:
+        """Read one pod or raise NotFoundError."""
         return _pod_dto(self._require_pod(pod_name))
 
     def _require_job(self, name: JobName) -> JobView:
@@ -419,12 +392,13 @@ class K8s:
     def _read_job(self, name: JobName) -> JobView | None:
         return _found(lambda: self.batch.read_namespaced_job(name, self.namespace))
 
-    def _list_jobs(
+    def list_jobs(
         self,
         status: str | None,
         name_prefix: str | None,
         limit: int,
     ) -> tuple[Job, ...]:
+        """List jobs, optionally filtered by status and name prefix."""
         listed = self.batch.list_namespaced_job(self.namespace)
         items = listed.items
         if items is None:
@@ -442,10 +416,12 @@ class K8s:
         matched.sort(key=lambda row: row.start_time or "", reverse=True)
         return tuple(matched[:limit])
 
-    def _job_config(self, name: JobName) -> ObjectConfig:
+    def job_config(self, name: JobName) -> ObjectConfig:
+        """Read one job's redacted YAML config."""
         return _object_config(self._require_job(name), name)
 
-    def _pod_config(self, pod_name: PodName) -> ObjectConfig:
+    def pod_config(self, pod_name: PodName) -> ObjectConfig:
+        """Read one pod's redacted YAML config."""
         return _object_config(self._require_pod(pod_name), pod_name)
 
 

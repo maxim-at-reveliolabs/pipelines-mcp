@@ -3,6 +3,7 @@
 from collections.abc import Awaitable, Callable
 from functools import wraps
 
+from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
 from pipelines_mcp.errors import EmptyQueryError
@@ -73,8 +74,6 @@ def _tool[**P, R](
     *,
     description: str,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-    """Register a tool and map domain errors."""
-
     def register(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         @wraps(fn)
         async def bound(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -123,7 +122,8 @@ async def list_pipeline_jobs(
     status_filter = (
         "Active" if stripped_status.lower() == "running" else stripped_status or None
     )
-    return await get_k8s().list_jobs(
+    return await run_sync(
+        get_k8s().list_jobs,
         status_filter,
         prefix,
         min(100, max(1, limit)),
@@ -139,7 +139,7 @@ async def list_pipeline_jobs(
 )
 async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Job:
     """Get one job by request, step, and replica."""
-    return await get_k8s().get_job(_job_name(request_id, step_index, replica))
+    return await run_sync(get_k8s().get_job, _job_name(request_id, step_index, replica))
 
 
 @_tool(
@@ -152,7 +152,9 @@ async def list_pipeline_pods(
     request_id: str, step_index: int, replica: int
 ) -> tuple[Pod, ...]:
     """List pods for one job."""
-    return await get_k8s().list_pods(_job_name(request_id, step_index, replica))
+    return await run_sync(
+        get_k8s().list_pods, _job_name(request_id, step_index, replica)
+    )
 
 
 @_tool(
@@ -166,19 +168,23 @@ async def get_pipeline_job_config(
     request_id: str, step_index: int, replica: int
 ) -> ObjectConfig:
     """Get the full redacted config for one job."""
-    return await get_k8s().job_config(_job_name(request_id, step_index, replica))
+    return await run_sync(
+        get_k8s().job_config, _job_name(request_id, step_index, replica)
+    )
 
 
 @_tool(description="Get one pod by pod_name from list_pipeline_pods.")
 async def get_pipeline_pod(pod_name: str) -> Pod:
     """Get one pod by name."""
-    return await get_k8s().get_pod(PodName(_nonempty(pod_name, "pod_name")))
+    return await run_sync(get_k8s().get_pod, PodName(_nonempty(pod_name, "pod_name")))
 
 
 @_tool(description="Full YAML for one pod by pod_name. Secrets are redacted.")
 async def get_pipeline_pod_config(pod_name: str) -> ObjectConfig:
     """Get the full redacted config for one pod."""
-    return await get_k8s().pod_config(PodName(_nonempty(pod_name, "pod_name")))
+    return await run_sync(
+        get_k8s().pod_config, PodName(_nonempty(pod_name, "pod_name"))
+    )
 
 
 @_tool(

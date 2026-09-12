@@ -29,8 +29,6 @@ from pipelines_mcp.models import (
     job_name,
 )
 
-pytestmark = pytest.mark.anyio
-
 _NS = "pipelines-ns"
 _SECRET = "AKIAIOSFODNN7EXAMPLE"  # noqa: S105
 _JOB = job_name(RequestId("r1"), StepIndex(0), Replica(0))
@@ -259,64 +257,64 @@ def _k8s(
         {},
     ],
 )
-async def test_list_pods_empty(jobs: dict[str, FakeJob]) -> None:
+def test_list_pods_empty(jobs: dict[str, FakeJob]) -> None:
     # Given: a job with no matching pods, or no job at all
     client, _batch, _core = _k8s(jobs=jobs)
 
     # When: listing pods
-    pods = await client.list_pods(_JOB)
+    pods = client.list_pods(_JOB)
 
     # Then: empty list, not an error
     assert pods == ()
 
 
-async def test_get_job_raises_not_found_when_404() -> None:
+def test_get_job_raises_not_found_when_404() -> None:
     # Given: empty cluster
     client, _batch, _core = _k8s()
 
     # When: getting a missing job
     # Then: typed not-found
     with pytest.raises(NotFoundError) as caught:
-        _ = await client.get_job(_JOB)
+        _ = client.get_job(_JOB)
     assert caught.value.entity == "job"
 
 
-async def test_get_pod_raises_not_found_when_404() -> None:
+def test_get_pod_raises_not_found_when_404() -> None:
     # Given: empty cluster
     client, _batch, _core = _k8s()
 
     # When: getting a missing pod
     # Then: typed not-found
     with pytest.raises(NotFoundError) as caught:
-        _ = await client.get_pod(_POD)
+        _ = client.get_pod(_POD)
     assert caught.value.entity == "pod"
 
 
-async def test_job_status_active_when_active_is_1() -> None:
+def test_job_status_active_when_active_is_1() -> None:
     # Given: the job has an active count of one
     client, _batch, _core = _k8s(jobs={_JOB: _job(status=_status(active=1))})
 
     # When: reading the job
-    job = await client.get_job(_JOB)
+    job = client.get_job(_JOB)
 
     # Then: mapped status is Active
     assert job.status == "Active"
 
 
-async def test_job_status_failed_when_failed_is_1() -> None:
+def test_job_status_failed_when_failed_is_1() -> None:
     # Given: the job has a failed count of one
     client, _batch, _core = _k8s(
         jobs={_JOB: _job(status=_status(failed=1, succeeded=1, active=1))}
     )
 
     # When: reading the job
-    job = await client.get_job(_JOB)
+    job = client.get_job(_JOB)
 
     # Then: Failed wins
     assert job.status == "Failed"
 
 
-async def test_container_waiting_maps_state() -> None:
+def test_container_waiting_maps_state() -> None:
     # Given: container state.waiting is set
     pod = _pod(state=FakeContainerState(waiting=Present()))
     client, _batch, core = _k8s(
@@ -325,39 +323,39 @@ async def test_container_waiting_maps_state() -> None:
     )
 
     # When: listing pods
-    pods = await client.list_pods(_JOB)
+    pods = client.list_pods(_JOB)
 
     # Then: waiting container maps
     assert pods[0].container_statuses[0].state is ContainerState.WAITING
     assert core.selectors == ["job-name=r1-0-0"]
 
 
-async def test_container_running_maps_state() -> None:
+def test_container_running_maps_state() -> None:
     # Given: container state.running is set
     pod = _pod(state=FakeContainerState(running=Present()))
     client, _batch, _core = _k8s(pods={_POD: pod})
 
     # When: getting the pod
-    result = await client.get_pod(_POD)
+    result = client.get_pod(_POD)
 
     # Then: running container maps
     assert result.container_statuses[0].state is ContainerState.RUNNING
     assert result.phase == "Running"
 
 
-async def test_container_terminated_maps_state() -> None:
+def test_container_terminated_maps_state() -> None:
     # Given: container state.terminated is set
     pod = _pod(state=FakeContainerState(terminated=Present()), phase="Succeeded")
     client, _batch, _core = _k8s(pods={_POD: pod})
 
     # When: getting the pod
-    result = await client.get_pod(_POD)
+    result = client.get_pod(_POD)
 
     # Then: terminated container maps
     assert result.container_statuses[0].state is ContainerState.TERMINATED
 
 
-async def test_get_pod_job_name_from_labels() -> None:
+def test_get_pod_job_name_from_labels() -> None:
     # Given: a pod with the job-name label
     pod = _pod(
         state=FakeContainerState(running=Present()),
@@ -366,13 +364,13 @@ async def test_get_pod_job_name_from_labels() -> None:
     client, _batch, _core = _k8s(pods={_POD: pod})
 
     # When: getting the pod
-    result = await client.get_pod(_POD)
+    result = client.get_pod(_POD)
 
     # Then: job_name comes from the label
     assert result.job_name == "pipelines-r1-0-0"
 
 
-async def test_failed_reason_is_first_failed_condition_and_redacted() -> None:
+def test_failed_reason_is_first_failed_condition_and_redacted() -> None:
     # Given: two Failed conditions, first message is credential-shaped
     client, batch, _core = _k8s(
         jobs={
@@ -389,14 +387,14 @@ async def test_failed_reason_is_first_failed_condition_and_redacted() -> None:
     )
 
     # When: reading the job
-    job = await client.get_job(_JOB)
+    job = client.get_job(_JOB)
 
     # Then: first Failed message, redacted; namespace used
     assert job.failed_reason == "[redacted]"
     assert batch.calls == [(_JOB, _NS)]
 
 
-async def test_pod_selector_falls_back_to_controller_uid() -> None:
+def test_pod_selector_falls_back_to_controller_uid() -> None:
     # Given: job with uid and no match_labels
     client, _batch, core = _k8s(
         jobs={_JOB: _job(uid="uid-1", status=_status(active=1))},
@@ -404,24 +402,24 @@ async def test_pod_selector_falls_back_to_controller_uid() -> None:
     )
 
     # When: listing pods
-    _ = await client.list_pods(_JOB)
+    _ = client.list_pods(_JOB)
 
     # Then: controller-uid selector
     assert core.selectors == ["batch.kubernetes.io/controller-uid=uid-1"]
 
 
-async def test_pod_selector_falls_back_to_job_name() -> None:
+def test_pod_selector_falls_back_to_job_name() -> None:
     # Given: job with no match_labels and no uid
     client, _batch, core = _k8s(jobs={_JOB: _job(status=_status(active=1))})
 
     # When: listing pods
-    _ = await client.list_pods(_JOB)
+    _ = client.list_pods(_JOB)
 
     # Then: job-name selector
     assert core.selectors == ["job-name=r1-0-0"]
 
 
-async def test_list_jobs_filters_by_status_and_prefix() -> None:
+def test_list_jobs_filters_by_status_and_prefix() -> None:
     # Given: one active job and one failed job
     active = _job(name="pipelines-r1-0-0", status=_status(active=1))
     failed = _job(name="pipelines-r2-0-0", status=_status(failed=1))
@@ -430,7 +428,7 @@ async def test_list_jobs_filters_by_status_and_prefix() -> None:
     )
 
     # When: listing Active jobs whose name starts with pipelines-r1
-    rows = await client.list_jobs("Active", "pipelines-r1", 50)
+    rows = client.list_jobs("Active", "pipelines-r1", 50)
 
     # Then: only the matching job
     assert len(rows) == 1
@@ -441,7 +439,7 @@ async def test_list_jobs_filters_by_status_and_prefix() -> None:
     assert rows[0].replica == 0
 
 
-async def test_list_jobs_newest_first() -> None:
+def test_list_jobs_newest_first() -> None:
     # Given: two active jobs with different start times
     older = _job(
         name="pipelines-old-0-0",
@@ -456,18 +454,18 @@ async def test_list_jobs_newest_first() -> None:
     )
 
     # When: listing without a prefix filter beyond pipelines-
-    rows = await client.list_jobs(None, "pipelines-", 50)
+    rows = client.list_jobs(None, "pipelines-", 50)
 
     # Then: the newer job is first
     assert [row.name for row in rows] == ["pipelines-new-0-0", "pipelines-old-0-0"]
 
 
-async def test_job_config_redacts_secrets() -> None:
+def test_job_config_redacts_secrets() -> None:
     # Given: a job whose dumped config contains a credential
     client, _batch, _core = _k8s(jobs={_JOB: _job()})
 
     # When: reading the job config
-    row = await client.job_config(_JOB)
+    row = client.job_config(_JOB)
 
     # Then: the credential is redacted
     assert _SECRET not in row.config
@@ -475,27 +473,27 @@ async def test_job_config_redacts_secrets() -> None:
     assert not row.config.lstrip().startswith("{")
 
 
-async def test_job_config_uses_api_field_names() -> None:
+def test_job_config_uses_api_field_names() -> None:
     # Given: a job object with OpenAPI attribute_map
     job = FakeOpenApiJob(metadata=FakeMeta(name=_JOB))
     client, _batch, _core = _k8s(jobs={_JOB: job})
 
     # When: reading the job config
-    row = await client.job_config(_JOB)
+    row = client.job_config(_JOB)
 
     # Then: keys match the API names, not Python snake_case
     assert "apiVersion" in row.config
     assert "api_version" not in row.config
 
 
-async def test_pod_config_redacts_secrets() -> None:
+def test_pod_config_redacts_secrets() -> None:
     # Given: a pod whose dumped config contains a credential
     client, _batch, _core = _k8s(
         pods={_POD: _pod(state=FakeContainerState(running=Present()))}
     )
 
     # When: reading the pod config
-    row = await client.pod_config(_POD)
+    row = client.pod_config(_POD)
 
     # Then: the credential is redacted and the body is YAML
     assert _SECRET not in row.config
