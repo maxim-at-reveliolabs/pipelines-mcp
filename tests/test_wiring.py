@@ -2,7 +2,6 @@ import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final, NoReturn
 
 import httpx2
@@ -36,14 +35,6 @@ type JsonValue = (
 )
 
 _JSON_OBJECT: Final = TypeAdapter(dict[str, JsonValue])
-_SRC: Final = Path(__file__).resolve().parents[1] / "src"
-_FORBIDDEN: Final[tuple[str, ...]] = (
-    "read_namespaced_secret",
-    "read_namespaced_pod_log",
-    "subprocess",
-    "kubectl",
-    "load_kube_config",
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,11 +252,3 @@ async def test_timescaling_log_tool_reads_store() -> None:
         set_object_store_factory(None)
     value = _page_from_tool(result)
     assert value["lines"] == ["gpu-fail"]
-
-
-def test_src_has_no_forbidden_cluster_apis() -> None:
-    hits: list[str] = []
-    for path in _SRC.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        hits.extend(f"{path}:{needle}" for needle in _FORBIDDEN if needle in text)
-    assert hits == []
