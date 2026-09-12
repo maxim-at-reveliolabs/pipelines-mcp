@@ -16,7 +16,7 @@ from pipelines_mcp.logs import (
     cap_log_bytes,
     decode_log_cursor,
     encode_log_cursor,
-    nonempty,
+    token,
 )
 from pipelines_mcp.models import LogPage
 from pipelines_mcp.redact import redact_text
@@ -46,13 +46,6 @@ class _CursorPayload(BaseModel):
     client: str
     batchtime: str
     comptype: str
-
-
-def _token(raw: str, field: str) -> str:
-    stripped = nonempty(raw, field)
-    if "/" in stripped:
-        raise SettingsError(reason=f"empty {field}")
-    return stripped
 
 
 def _preferred_rank(name: str) -> int:
@@ -162,9 +155,9 @@ def fetch_timescaling_logs(
     """Fetch one capped timescaling log page."""
     normalized = replace(
         request,
-        client=_token(request.client, "client"),
-        batchtime=_token(request.batchtime, "batchtime"),
-        comptype=_token(request.comptype, "comptype"),
+        client=token(request.client, "client"),
+        batchtime=token(request.batchtime, "batchtime"),
+        comptype=token(request.comptype, "comptype"),
     )
     mode = LogMode.FULL if normalized.full else LogMode.TAIL
     prior_sa: int | None = None

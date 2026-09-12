@@ -269,6 +269,14 @@ def nonempty(raw: str, field: str) -> str:
     return stripped
 
 
+def token(raw: str, field: str) -> str:
+    """Strip a path token. Empty or slash fails."""
+    stripped = nonempty(raw, field)
+    if "/" in stripped:
+        raise SettingsError(reason=f"empty {field}")
+    return stripped
+
+
 async def fetch_logs(
     client: httpx2.AsyncClient,
     request: LogRequest,

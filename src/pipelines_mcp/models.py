@@ -128,3 +128,19 @@ class PipelineStatus(BaseModel):
     end_time: str
     created_at: str
     steps: tuple[PipelineStepStatus, ...]
+
+
+class ArtifactFolder(BaseModel):
+    """One immediate child folder and how many objects it holds."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    name: str
+    object_count: int
+
+
+class ArtifactListing(BaseModel):
+    """Artifact folders under one rust job prefix."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    prefix: str
+    folders: tuple[ArtifactFolder, ...]

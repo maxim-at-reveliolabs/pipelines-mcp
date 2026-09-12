@@ -14,6 +14,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | Pipeline service status | `pipeline_status.py` |
 | Start line keys | `pipeline_start.py` |
 | Timescaling logs | `timescaling_logs.py`, `object_store.py` |
+| Artifact folders | `artifacts.py` |
 | SSO device login | `settings_sso.py`, `sso_url.py` |
 | EKS token | `eks_token.py` |
 | ES auth | `settings.py` |
@@ -32,6 +33,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 - Pipeline service login secret `pipelines/prod/service_pipelines_user_prod@reveliolabs.com`
 - Job name `pipelines-{request_id}-{step_index}-{replica}`
 - Timescaling logs: `{batchtime}/{client}/{comptype}/timescaling/logs/`, else `{batchtime}/logs/{client}_{batchtime}_{comptype}_replica_0/`, else without `_replica_0`
+- Artifact folders: `{batchtime}/{client}/{comptype}/` grouped by first child folder
 
 ## Conventions
 

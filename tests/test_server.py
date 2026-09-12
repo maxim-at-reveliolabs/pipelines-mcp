@@ -24,10 +24,11 @@ _NAMES: Final[tuple[str, ...]] = (
     "search_pipeline_service_log",
     "get_pipeline_start",
     "get_timescaling_log",
+    "list_pipeline_artifacts",
 )
 
 
-async def test_lists_exactly_thirteen_tool_names() -> None:
+async def test_lists_exactly_fourteen_tool_names() -> None:
     tools = await mcp.list_tools()
     names = tuple(tool.name for tool in tools)
     assert names == _NAMES

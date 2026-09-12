@@ -267,3 +267,36 @@ async def test_timescaling_log_tool_reads_store() -> None:
         set_object_store_factory(None)
     value = _page_from_tool(result)
     assert value["lines"] == ["gpu-fail"]
+
+
+async def test_list_pipeline_artifacts_tool_reads_store() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def list_keys(self, prefix: str) -> tuple[str, ...]:
+            _ = prefix
+            return (
+                "202608/acme/dashboard/output/a",
+                "202608/acme/dashboard/timescaling/logs/b",
+            )
+
+        def get_bytes(self, key: str) -> bytes:
+            raise AssertionError(key)
+
+    set_object_store_factory(Store)
+    try:
+        result = await mcp.call_tool(
+            "list_pipeline_artifacts",
+            {
+                "client": "acme",
+                "batchtime": "202608",
+                "comptype": "dashboard",
+            },
+        )
+    finally:
+        set_object_store_factory(None)
+    value = _page_from_tool(result)
+    assert value["prefix"] == "202608/acme/dashboard/"
+    assert value["folders"] == [
+        {"name": "output", "object_count": 1},
+        {"name": "timescaling", "object_count": 1},
+    ]

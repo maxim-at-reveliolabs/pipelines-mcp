@@ -7,8 +7,10 @@ from inspect import cleandoc
 from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
+from pipelines_mcp.artifacts import list_artifacts
 from pipelines_mcp.logs import LogRequest, fetch_logs, nonempty
 from pipelines_mcp.models import (
+    ArtifactListing,
     Job,
     LogKind,
     LogPage,
@@ -56,6 +58,9 @@ else.
 If the worker says the timescaling cluster failed: get_pipeline_job_config
 (step_index and replica are usually 0) for client, batchtime, and comptype,
 then get_timescaling_log.
+list_pipeline_artifacts lists artifact folders for one rust job after the
+pod is gone. Pass client, batchtime, and comptype from
+get_pipeline_job_config.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
 Use the log tools instead.
@@ -176,7 +181,8 @@ async def get_pipeline_job_config(
     """Full YAML for one job by request_id, step_index, and replica.
 
     Secrets are redacted. Use to read client, batchtime, and comptype before
-    get_timescaling_log. If the job is gone, use the log tools.
+    get_timescaling_log or list_pipeline_artifacts. If the job is gone, use
+    the log tools.
     """
     return await run_sync(
         get_k8s().job_config, _job_name(request_id, step_index, replica)
@@ -296,4 +302,26 @@ async def get_timescaling_log(
             cursor=cursor,
             full=full,
         ),
+    )
+
+
+@_tool
+async def list_pipeline_artifacts(
+    client: str,
+    batchtime: str,
+    comptype: str,
+) -> ArtifactListing:
+    """Artifact folders for one rust job.
+
+    Pass client, batchtime, and comptype from get_pipeline_job_config.
+    Groups objects under {batchtime}/{client}/{comptype}/ by the first folder
+    name. Typical folders: dataset_unique, timescaling, output, mappings_input.
+    Does not return file contents.
+    """
+    return await run_sync(
+        list_artifacts,
+        get_object_store(),
+        client,
+        batchtime,
+        comptype,
     )
