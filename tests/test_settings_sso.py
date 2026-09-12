@@ -91,7 +91,7 @@ def test_request_sso_skips_oidc_when_credentials_work() -> None:
     # When: requesting SSO
     request_sso(
         creds_ok=lambda: True,
-        load_portal=lambda _profile: _PORTAL,
+        load_portal=lambda: _PORTAL,
         oidc=oidc,
         announce=announced.append,
         save_token=oidc.saved.__setitem__,
@@ -121,7 +121,7 @@ def test_request_sso_waits_then_saves_token(
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
             creds_ok=lambda: False,
-            load_portal=lambda _profile: _PORTAL,
+            load_portal=lambda: _PORTAL,
             oidc=oidc,
             sleep=sleeps.append,
             announce=announced.append,
@@ -138,8 +138,8 @@ def test_request_sso_waits_then_saves_token(
 
 def test_request_sso_raises_when_profile_portal_missing() -> None:
     # Given: the AWS profile has no SSO portal
-    def load_portal(profile: str) -> SsoPortal:
-        raise SettingsError(reason=f"AWS profile {profile} is missing")
+    def load_portal() -> SsoPortal:
+        raise SettingsError(reason="AWS profile reveliolabs is missing")
 
     # When: requesting SSO
     # Then: a typed settings error is raised
@@ -164,7 +164,7 @@ def test_request_sso_raises_url_and_starts_wait_in_background() -> None:
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(
             creds_ok=lambda: False,
-            load_portal=lambda _profile: _PORTAL,
+            load_portal=lambda: _PORTAL,
             oidc=oidc,
             announce=announced.append,
             save_token=oidc.saved.__setitem__,
@@ -185,7 +185,7 @@ def test_request_sso_reuses_url_while_login_still_running() -> None:
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
             creds_ok=lambda: False,
-            load_portal=lambda _profile: _PORTAL,
+            load_portal=lambda: _PORTAL,
             oidc=oidc,
             announce=lambda _url: None,
             save_token=oidc.saved.__setitem__,
@@ -214,7 +214,7 @@ def test_request_sso_sends_url_to_helper_without_announcing() -> None:
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(
             creds_ok=lambda: False,
-            load_portal=lambda _profile: _PORTAL,
+            load_portal=lambda: _PORTAL,
             oidc=oidc,
             announce=announced.append,
             send_url=send,
@@ -235,7 +235,7 @@ def test_request_sso_reuses_helper_handoff_without_url() -> None:
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
             creds_ok=lambda: False,
-            load_portal=lambda _profile: _PORTAL,
+            load_portal=lambda: _PORTAL,
             oidc=oidc,
             announce=lambda _url: None,
             send_url=lambda _url: True,

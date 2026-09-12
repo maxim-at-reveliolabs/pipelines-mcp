@@ -24,7 +24,7 @@ type Sleep = Callable[[float], None]
 type Announce = Callable[[str], None]
 type SaveToken = Callable[[str, dict[str, str | int]], None]
 type CredsOk = Callable[[], bool]
-type LoadPortal = Callable[[str], SsoPortal]
+type LoadPortal = Callable[[], SsoPortal]
 type IsPending = Callable[[BaseException], bool]
 type Spawn = Callable[[Callable[[], None]], None]
 type SendUrl = Callable[[str], bool]
@@ -84,7 +84,6 @@ def _default_spawn(work: Callable[[], None]) -> None:
 
 
 def _device_login(
-    profile: str,
     *,
     load_portal: LoadPortal,
     oidc: SsoOidc | None,
@@ -93,7 +92,7 @@ def _device_login(
     save_token: SaveToken,
     is_pending: IsPending,
 ) -> tuple[str, Callable[[], None]]:
-    portal = load_portal(profile)
+    portal = load_portal()
     client: SsoOidc | SSOOIDCClient = (
         oidc if oidc is not None else _live_oidc(portal.region)
     )
@@ -168,7 +167,7 @@ def request_sso(
     send_url: SendUrl | None = None,
 ) -> None:
     """Start SSO login in the background. The helper gets the URL when it is up."""
-    ok = _live_creds_ok(AWS_PROFILE) if creds_ok is None else creds_ok()
+    ok = _live_creds_ok() if creds_ok is None else creds_ok()
     if ok:
         _PENDING.url = None
         _PENDING.helper = False
@@ -188,7 +187,6 @@ def request_sso(
         tell(page)
 
     url, wait = _device_login(
-        AWS_PROFILE,
         load_portal=_live_load_portal if load_portal is None else load_portal,
         oidc=oidc,
         sleep=time.sleep if sleep is None else sleep,
@@ -229,14 +227,14 @@ def sso_auth_expired(exc: BaseException) -> bool:
             return False
 
 
-def _live_creds_ok(profile: str) -> bool:
+def _live_creds_ok() -> bool:
     import boto3  # noqa: PLC0415  # load on use
     from botocore.exceptions import ProfileNotFound  # noqa: PLC0415  # load on use
 
     try:
-        credentials = boto3.Session(profile_name=profile).get_credentials()
+        credentials = boto3.Session(profile_name=AWS_PROFILE).get_credentials()
     except ProfileNotFound as exc:
-        raise SettingsError(reason=f"AWS profile {profile} is missing") from exc
+        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} is missing") from exc
     except Exception as exc:  # boto3 SSO errors are not a stable type
         if sso_auth_expired(exc):
             return False
@@ -252,14 +250,14 @@ def _live_creds_ok(profile: str) -> bool:
     return True
 
 
-def _live_load_portal(profile: str) -> SsoPortal:
+def _live_load_portal() -> SsoPortal:
     parser = ConfigParser()
     read = parser.read(Path.home() / ".aws" / "config")
     if not read:
-        raise SettingsError(reason=f"AWS profile {profile} is missing")
-    section = "default" if profile == "default" else f"profile {profile}"
+        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} is missing")
+    section = f"profile {AWS_PROFILE}"
     if not parser.has_section(section):
-        raise SettingsError(reason=f"AWS profile {profile} is missing")
+        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} is missing")
     session_name = parser.get(section, "sso_session", fallback="")
     if session_name != "":
         sso_section = f"sso-session {session_name}"
@@ -273,7 +271,7 @@ def _live_load_portal(profile: str) -> SsoPortal:
     start = parser.get(section, "sso_start_url", fallback="")
     region = parser.get(section, "sso_region", fallback="")
     if start == "" or region == "":
-        raise SettingsError(reason=f"AWS profile {profile} has no SSO start URL")
+        raise SettingsError(reason=f"AWS profile {AWS_PROFILE} has no SSO start URL")
     return SsoPortal(start_url=start, region=region, session_name=None)
 
 
