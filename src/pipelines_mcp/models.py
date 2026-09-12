@@ -160,7 +160,7 @@ class PipelineImages(BaseModel):
 
 
 class PipelineStepRun(BaseModel):
-    """One DAG step replica and its run status."""
+    """One step replica and its run status."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     step_index: int

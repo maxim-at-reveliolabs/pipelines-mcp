@@ -70,7 +70,7 @@ Fast pipeline <uuid> ... failed; StartMultipartPipeline; pipeline-id;
 pipeline id.
 
 If the user already gave a request_id UUID, call get_pipeline_status
-next. Then get_pipeline_step_status to see which DAG step failed.
+next. Then get_pipeline_step_status to see which step failed.
 Overall status stays on get_pipeline_status. Then get_pipeline_log
 and get_pipeline_service_log.
 When get_pipeline_status is pending and there is no cluster job, call
@@ -220,7 +220,7 @@ async def get_pipeline_images() -> PipelineImages:
 async def get_pipeline_step_status(request_id: str) -> PipelineStepRuns:
     """Per-step run status for a request_id UUID.
 
-    Use after get_pipeline_status to see which DAG step failed. Overall
+    Use after get_pipeline_status to see which step failed. Overall
     status stays on get_pipeline_status. Empty logs return no steps.
     """
     stripped = nonempty(request_id, "request_id")
