@@ -1,4 +1,4 @@
-"""Tool implementations over the injected App."""
+"""Tool implementations over lazy clients."""
 
 from typing import Final
 
@@ -19,7 +19,7 @@ from pipelines_mcp.models import (
     job_name,
 )
 from pipelines_mcp.pipeline_start import parse_start
-from pipelines_mcp.server_app import get_app, get_k8s, get_object_store
+from pipelines_mcp.server_app import get_k8s, get_logs_client, get_object_store
 from pipelines_mcp.timescaling_logs import (
     TimescalingLogRequest,
     fetch_timescaling_logs,
@@ -103,7 +103,7 @@ async def read_log(
 ) -> LogPage:
     """Read a request log page for one kind."""
     return await fetch_logs(
-        get_app().logs_client,
+        get_logs_client(),
         LogRequest(
             request_id=request_id,
             log_kind=log_kind,
@@ -116,7 +116,7 @@ async def read_log(
 async def read_start(request_id: str) -> PipelineStart:
     """Read the start-line keys for a request."""
     page = await fetch_logs(
-        get_app().logs_client,
+        get_logs_client(),
         LogRequest(
             request_id=request_id,
             log_kind=LogKind.SERVICE,

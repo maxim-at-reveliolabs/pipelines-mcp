@@ -15,9 +15,8 @@ from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import create_async_client
 from pipelines_mcp.server import mcp
 from pipelines_mcp.server_app import (
-    App,
-    set_builder,
     set_k8s_factory,
+    set_logs_factory,
     set_object_store_factory,
 )
 from pipelines_mcp.settings import EsAuth
@@ -94,18 +93,12 @@ class Recorder:
     bodies: list[dict[str, JsonValue]]
 
 
-def _as_tool_result(
-    result: CallToolResult | InputRequiredResult,
-) -> CallToolResult:
+def _tool_json(result: CallToolResult | InputRequiredResult) -> JsonValue:
     match result:
         case CallToolResult() as call:
-            return call
+            dumped = _JSON_OBJECT.validate_json(call.model_dump_json())
         case InputRequiredResult():
             pytest.fail("tool asked for input")
-
-
-def _tool_json(result: CallToolResult | InputRequiredResult) -> JsonValue:
-    dumped = _JSON_OBJECT.validate_json(_as_tool_result(result).model_dump_json())
     structured = dumped.get("structured_content")
     if isinstance(structured, dict) and "result" in structured:
         return structured["result"]
@@ -163,31 +156,25 @@ async def _wired(
         batch=FakeBatch(jobs={} if jobs is None else jobs),
         core=FakeCore(),
     )
-    set_builder(lambda: App(logs_client=client))
+    set_logs_factory(lambda: client)
     set_k8s_factory(lambda: k8s)
     try:
         yield recorder
     finally:
-        set_builder(None)
+        set_logs_factory(None)
         set_k8s_factory(None)
-        set_object_store_factory(None)
         await client.aclose()
 
 
 async def test_list_pipeline_pods_empty_through_tool() -> None:
-    # Given: the job exists and its pods are already gone
     jobs = {
         "pipelines-r1-0-0": FakeJob(metadata=FakeMeta(name="pipelines-r1-0-0")),
     }
-
-    # When: list_pipeline_pods is called through the MCP tool
     async with _wired(jobs=jobs):
         result = await mcp.call_tool(
             "list_pipeline_pods",
             {"request_id": "r1", "step_index": 0, "replica": 0},
         )
-
-    # Then: the tool returns an empty list
     value = _tool_json(result)
     assert value == []
 
@@ -212,14 +199,9 @@ async def test_list_pipeline_pods_empty_through_tool() -> None:
 async def test_log_tool_filters_kind(
     tool: str, line: str, query: str, absent: str
 ) -> None:
-    # Given: logs for a request
     hits: list[dict[str, JsonValue]] = [{"_source": {"log": line}, "sort": ["t1"]}]
-
-    # When: the matching log tool is called
     async with _wired(hits=hits) as recorder:
         result = await mcp.call_tool(tool, {"request_id": "req-1"})
-
-    # Then: query_string matches that tool's field
     value = _page_from_tool(result)
     assert value["lines"] == [line]
     clause = _kind_clause(recorder.bodies[0])
@@ -229,7 +211,6 @@ async def test_log_tool_filters_kind(
 
 
 async def test_get_pipeline_start_returns_keys_and_leaves_arguments_intact() -> None:
-    # Given: a service start line whose arguments are a JSON string
     arguments = '{ "batchtime": "202608", "client": "isaca" }'
     line = json.dumps(
         {
@@ -244,12 +225,8 @@ async def test_get_pipeline_start_returns_keys_and_leaves_arguments_intact() -> 
         }
     )
     hits: list[dict[str, JsonValue]] = [{"_source": {"log": line}, "sort": ["t1"]}]
-
-    # When: get_pipeline_start is called through the MCP tool
     async with _wired(hits=hits) as recorder:
         result = await mcp.call_tool("get_pipeline_start", {"request_id": "req"})
-
-    # Then: arguments is unchanged and the first log lines are read
     value = _page_from_tool(result)
     assert value["job_name"] == "pipelines-req-0-0"
     assert value["arguments"] == arguments
@@ -257,20 +234,15 @@ async def test_get_pipeline_start_returns_keys_and_leaves_arguments_intact() -> 
 
 
 async def test_get_pipeline_start_raises_when_line_is_missing() -> None:
-    # Given: service logs with no start line
     hits: list[dict[str, JsonValue]] = [
         {"_source": {"log": "queued"}, "sort": ["t1"]},
     ]
-
-    # When: the start tool runs
-    # Then: the tool returns a typed error
     async with _wired(hits=hits):
         with pytest.raises(ToolError, match="No starting pipeline line"):
             _ = await mcp.call_tool("get_pipeline_start", {"request_id": "req"})
 
 
 async def test_timescaling_log_tool_reads_store() -> None:
-    # Given: a rust-layout stderr file for the run
     @dataclass(frozen=True, slots=True)
     class Store:
         def list_keys(self, prefix: str) -> tuple[str, ...]:
@@ -285,7 +257,6 @@ async def test_timescaling_log_tool_reads_store() -> None:
 
     set_object_store_factory(Store)
     try:
-        # When: the timescaling log tool is called
         result = await mcp.call_tool(
             "get_timescaling_log",
             {
@@ -296,19 +267,13 @@ async def test_timescaling_log_tool_reads_store() -> None:
         )
     finally:
         set_object_store_factory(None)
-
-    # Then: the stderr line is returned
     value = _page_from_tool(result)
     assert value["lines"] == ["gpu-fail"]
 
 
 def test_src_has_no_forbidden_cluster_apis() -> None:
-    # Given: production sources under src/
-    # When: scanning for forbidden cluster APIs
     hits: list[str] = []
     for path in _SRC.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         hits.extend(f"{path}:{needle}" for needle in _FORBIDDEN if needle in text)
-
-    # Then: none of those APIs appear
     assert hits == []

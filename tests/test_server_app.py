@@ -11,12 +11,11 @@ from pipelines_mcp.errors import SsoLoginRequiredError
 from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import create_async_client
 from pipelines_mcp.server_app import (
-    App,
-    get_app,
     get_k8s,
+    get_logs_client,
     get_object_store,
-    set_builder,
     set_k8s_factory,
+    set_logs_factory,
     set_object_store_factory,
     set_reauth,
     tool_boundary,
@@ -50,39 +49,27 @@ class _Core:
         raise K8sApiError(status=404)
 
 
-def _client() -> httpx2.AsyncClient:
-    return create_async_client(
+def _raise_sso() -> None:
+    raise SsoLoginRequiredError(url=_URL)
+
+
+async def test_get_logs_client_does_not_check_sso() -> None:
+    client = create_async_client(
         auth=EsAuth(username="u", password=SecretStr("p")),
         transport=httpx2.MockTransport(lambda req: httpx2.Response(200, request=req)),
     )
-
-
-def _k8s() -> K8s:
-    return K8s(batch=_Batch(), core=_Core())
-
-
-async def test_get_app_does_not_check_sso() -> None:
-    # Given: SSO login would fail
-    client = _client()
-    set_builder(lambda: App(logs_client=client))
-
-    def reauth() -> None:
-        raise SsoLoginRequiredError(url=_URL)
-
-    set_reauth(reauth)
+    set_logs_factory(lambda: client)
+    set_reauth(_raise_sso)
     try:
-        # When: a log-only path loads the app
-        app = get_app()
-        # Then: the log client is returned with no login error
-        assert app.logs_client is client
+        got = get_logs_client()
+        assert got is client
     finally:
         set_reauth(None)
-        set_builder(None)
+        set_logs_factory(None)
         await client.aclose()
 
 
 async def test_get_object_store_does_not_check_sso() -> None:
-    # Given: SSO login would fail
     @dataclass(frozen=True, slots=True)
     class Store:
         def list_keys(self, prefix: str) -> tuple[str, ...]:
@@ -95,15 +82,9 @@ async def test_get_object_store_does_not_check_sso() -> None:
 
     store = Store()
     set_object_store_factory(lambda: store)
-
-    def reauth() -> None:
-        raise SsoLoginRequiredError(url=_URL)
-
-    set_reauth(reauth)
+    set_reauth(_raise_sso)
     try:
-        # When: the object store is loaded
         got = get_object_store()
-        # Then: the store is returned with no login error
         assert got is store
     finally:
         set_reauth(None)
@@ -111,46 +92,36 @@ async def test_get_object_store_does_not_check_sso() -> None:
 
 
 async def test_get_k8s_rebuilds_after_sso_login_required() -> None:
-    # Given: a cluster client was already built, then SSO login is required
     built: list[K8s] = []
-    client = _client()
-    set_builder(lambda: App(logs_client=client))
-    set_k8s_factory(lambda: built.append(_k8s()) or built[-1])
+
+    def build() -> K8s:
+        k8s = K8s(batch=_Batch(), core=_Core())
+        built.append(k8s)
+        return k8s
+
+    set_k8s_factory(build)
     set_reauth(None)
-    first = get_k8s()
-
-    def reauth() -> None:
-        raise SsoLoginRequiredError(url=_URL)
-
-    set_reauth(reauth)
-
-    # When: get_k8s runs while login is required
-    with pytest.raises(SsoLoginRequiredError):
-        _ = get_k8s()
-
-    # Then: a later successful login builds a new cluster client
-    set_reauth(None)
-    second = get_k8s()
-    assert first is not second
-    assert len(built) == 2
-    set_k8s_factory(None)
-    set_builder(None)
-    await client.aclose()
+    try:
+        first = get_k8s()
+        set_reauth(_raise_sso)
+        with pytest.raises(SsoLoginRequiredError):
+            _ = get_k8s()
+        set_reauth(None)
+        second = get_k8s()
+        assert first is not second
+        assert len(built) == 2
+    finally:
+        set_k8s_factory(None)
+        set_reauth(None)
 
 
 async def test_tool_boundary_expired_token_returns_login_url() -> None:
-    # Given: cluster auth failed because the SSO token is dead
-    def reauth() -> None:
-        raise SsoLoginRequiredError(url=_URL)
-
-    set_reauth(reauth)
+    set_reauth(_raise_sso)
     try:
-        # When: that error crosses the tool boundary
         with pytest.raises(ToolError, match="ZZZZ-YYYY") as caught:
             async with tool_boundary():
                 raise SSOTokenLoadError(error_msg="dead")
     finally:
         set_reauth(None)
 
-    # Then: the agent sees the login URL
     assert _URL in str(caught.value)
