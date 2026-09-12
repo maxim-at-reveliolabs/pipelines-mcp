@@ -133,6 +133,24 @@ class PipelineStatus(BaseModel):
     steps: tuple[PipelineStepStatus, ...]
 
 
+class PipelineStepRun(BaseModel):
+    """One DAG step replica and its run status."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    step_index: int
+    replica: int
+    status: str
+    job_name: str | None = None
+
+
+class PipelineStepRuns(BaseModel):
+    """Per-step run status for one request."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    request_id: str
+    steps: tuple[PipelineStepRun, ...]
+
+
 class ArtifactFolder(BaseModel):
     """One immediate child folder and how many objects it holds."""
 

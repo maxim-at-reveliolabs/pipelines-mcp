@@ -21,11 +21,13 @@ from pipelines_mcp.models import (
     PipelineConfigCheck,
     PipelineStart,
     PipelineStatus,
+    PipelineStepRuns,
     Pod,
     job_name,
 )
 from pipelines_mcp.pipeline_config import check_pipeline_config
 from pipelines_mcp.pipeline_start import parse_start
+from pipelines_mcp.pipeline_step_status import parse_step_status
 from pipelines_mcp.server_app import (
     get_k8s,
     get_logs_client,
@@ -52,7 +54,9 @@ Fast pipeline <uuid> ... failed; StartMultipartPipeline; pipeline-id;
 pipeline id.
 
 If the user already gave a request_id UUID, call get_pipeline_status
-next. Then get_pipeline_log and get_pipeline_service_log.
+next. Then get_pipeline_step_status to see which DAG step failed.
+Overall status stays on get_pipeline_status. Then get_pipeline_log
+and get_pipeline_service_log.
 When a run has many steps, use get_pipeline_step_log instead of mixed
 get_pipeline_log.
 search_pipeline_log and search_pipeline_service_log find matching lines
@@ -160,6 +164,21 @@ async def get_pipeline_status(request_id: str) -> PipelineStatus:
     return await run_sync(
         get_status_store().get, nonempty(request_id, "request_id")
     )
+
+
+@_tool
+async def get_pipeline_step_status(request_id: str) -> PipelineStepRuns:
+    """Per-step run status for a request_id UUID.
+
+    Use after get_pipeline_status to see which DAG step failed. Overall
+    status stays on get_pipeline_status. Empty logs return no steps.
+    """
+    stripped = nonempty(request_id, "request_id")
+    page = await fetch_logs(
+        get_logs_client(),
+        LogRequest(request_id=stripped, log_kind=LogKind.SERVICE, full=True),
+    )
+    return parse_step_status(stripped, page.lines)
 
 
 @_tool

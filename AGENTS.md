@@ -12,6 +12,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | Job/pod I/O | `k8s.py` |
 | Logs | `logs.py` |
 | Pipeline service status | `pipeline_status.py` |
+| Per-step run status | `pipeline_step_status.py` |
 | Start line keys | `pipeline_start.py` |
 | Config JSON check | `pipeline_config.py` |
 | Timescaling logs | `timescaling_logs.py`, `object_store.py` |

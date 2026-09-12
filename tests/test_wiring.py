@@ -193,6 +193,47 @@ async def test_list_pipeline_pods_empty_through_tool() -> None:
     assert value == []
 
 
+async def test_get_pipeline_step_status_through_tool() -> None:
+    start = json.dumps(
+        {
+            "@timestamp": "2026-09-11T03:11:01Z",
+            "message": "[k8s-client] starting pipeline",
+            "job-name": "pipelines-req-0-0",
+            "image-name": "pipelines-rust:v1.1.1",
+            "container-name": "pipelines-rust",
+            "namespace": "pipelines-prd",
+            "arguments": '{ "batchtime": "202608", "client": "isaca" }',
+            "pipeline-id": "req",
+        }
+    )
+    slack = json.dumps(
+        {
+            "message": "Unable to send slack message, logging instead",
+            "detail": "Index: 0, replica: 0, status: error ",
+        }
+    )
+    hits: list[dict[str, JsonValue]] = [
+        {"_source": {"log": start}, "sort": ["t1"]},
+        {"_source": {"log": slack}, "sort": ["t2"]},
+    ]
+    async with _wired(hits=hits):
+        result = await mcp.call_tool(
+            "get_pipeline_step_status",
+            {"request_id": "req"},
+        )
+    value = _tool_json(result)
+    assert isinstance(value, dict)
+    assert value["request_id"] == "req"
+    steps = value["steps"]
+    assert isinstance(steps, list)
+    first = steps[0]
+    assert isinstance(first, dict)
+    assert first["step_index"] == 0
+    assert first["replica"] == 0
+    assert first["status"] == "error"
+    assert first["job_name"] == "pipelines-req-0-0"
+
+
 async def test_get_pipeline_start_asks_for_twenty_lines() -> None:
     line = json.dumps(
         {
