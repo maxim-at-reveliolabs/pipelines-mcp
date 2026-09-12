@@ -87,6 +87,12 @@ def _api[T](read: Callable[[], T]) -> T:
         raise K8sApiError(status=status) from exc
 
 
+def _require[T](raw: T | None, entity: str) -> T:
+    if raw is None:
+        raise NotFoundError(entity=entity)
+    return raw
+
+
 def _found[T](read: Callable[[], T]) -> T | None:
     try:
         return _api(read)
@@ -236,7 +242,7 @@ class K8s:
 
     def get_job(self, name: str) -> Job:
         """Read one job or raise NotFoundError."""
-        return _job_dto(self._require_job(name), name)
+        return _job_dto(_require(self._read_job(name), "job"), name)
 
     def list_pods(self, name: str) -> tuple[Pod, ...]:
         """List pods for a job. Empty if the job or pods are gone."""
@@ -255,22 +261,13 @@ class K8s:
 
     def get_pod(self, pod_name: str) -> Pod:
         """Read one pod or raise NotFoundError."""
-        return _pod_dto(self._require_pod(pod_name))
-
-    def _require_job(self, name: str) -> V1Job:
-        raw = self._read_job(name)
-        if raw is None:
-            raise NotFoundError(entity="job")
-        return raw
-
-    def _require_pod(self, pod_name: str) -> V1Pod:
-        raw = _found(lambda: self.core.read_namespaced_pod(pod_name, self.namespace))
-        if raw is None:
-            raise NotFoundError(entity="pod")
-        return raw
+        return _pod_dto(_require(self._read_pod(pod_name), "pod"))
 
     def _read_job(self, name: str) -> V1Job | None:
         return _found(lambda: self.batch.read_namespaced_job(name, self.namespace))
+
+    def _read_pod(self, pod_name: str) -> V1Pod | None:
+        return _found(lambda: self.core.read_namespaced_pod(pod_name, self.namespace))
 
     def list_jobs(
         self,
@@ -298,11 +295,11 @@ class K8s:
 
     def job_config(self, name: str) -> ObjectConfig:
         """Read one job's redacted YAML config."""
-        return _object_config(self._require_job(name), name)
+        return _object_config(_require(self._read_job(name), "job"), name)
 
     def pod_config(self, pod_name: str) -> ObjectConfig:
         """Read one pod's redacted YAML config."""
-        return _object_config(self._require_pod(pod_name), pod_name)
+        return _object_config(_require(self._read_pod(pod_name), "pod"), pod_name)
 
 
 def live_k8s() -> K8s:
