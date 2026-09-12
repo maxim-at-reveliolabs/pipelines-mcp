@@ -1,14 +1,26 @@
-"""Artifact folders and keys from an injected object store."""
+"""Artifact folders, keys, and short text heads from an injected object store."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import gzip
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Final
 
-from pipelines_mcp.logs import token
-from pipelines_mcp.models import ArtifactFiles, ArtifactFolder, ArtifactListing
+from pipelines_mcp.errors import SettingsError
+from pipelines_mcp.logs import nonempty, token
+from pipelines_mcp.models import (
+    ArtifactFiles,
+    ArtifactFolder,
+    ArtifactListing,
+    ArtifactText,
+)
+from pipelines_mcp.redact import redact_text
 
 if TYPE_CHECKING:
     from pipelines_mcp.object_store import LogStore
+
+_PARQUET_MAGIC: Final = b"PAR1"
+_TEXT_CAP: Final = 32768
 
 
 def _job_prefix(client: str, batchtime: str, comptype: str) -> str:
@@ -63,3 +75,45 @@ def list_artifact_files(
     """List object keys under one rust artifact folder."""
     prefix = f"{_job_prefix(client, batchtime, comptype)}{token(folder, 'folder')}/"
     return ArtifactFiles(prefix=prefix, keys=child_keys(store, prefix))
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactTextRequest:
+    """One rust artifact object to read as text."""
+
+    client: str
+    batchtime: str
+    comptype: str
+    folder: str
+    key: str
+
+
+def _decode(key: str, raw: bytes) -> str:
+    body = raw
+    if key.endswith(".gz"):
+        try:
+            body = gzip.decompress(raw)
+        except OSError as exc:
+            raise SettingsError(reason="log store unreachable") from exc
+    if body.startswith(_PARQUET_MAGIC):
+        raise SettingsError(reason="parquet is not text")
+    return body.decode("utf-8", errors="replace")
+
+
+def get_artifact_text(store: LogStore, request: ArtifactTextRequest) -> ArtifactText:
+    """Return a short redacted text head of one rust artifact object."""
+    prefix = (
+        f"{_job_prefix(request.client, request.batchtime, request.comptype)}"
+        f"{token(request.folder, 'folder')}/"
+    )
+    key = nonempty(request.key, "key")
+    if key.startswith("/") or ".." in key or "" in key.split("/"):
+        raise SettingsError(reason="empty key")
+    if key.lower().endswith(".parquet"):
+        raise SettingsError(reason="parquet is not text")
+    raw = store.get_bytes(f"{prefix}{key}")
+    text = redact_text(_decode(key, raw))
+    encoded = text.encode("utf-8")
+    if len(encoded) > _TEXT_CAP:
+        text = encoded[:_TEXT_CAP].decode("utf-8", errors="replace")
+    return ArtifactText(prefix=prefix, key=key, text=text)

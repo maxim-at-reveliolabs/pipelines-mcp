@@ -175,6 +175,15 @@ class ArtifactFiles(BaseModel):
     keys: tuple[str, ...]
 
 
+class ArtifactText(BaseModel):
+    """Short text head of one rust artifact object."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    prefix: str
+    key: str
+    text: str
+
+
 class LifecycleArtifacts(BaseModel):
     """Unload folders and shared jsonl names for one lifecycle run."""
 

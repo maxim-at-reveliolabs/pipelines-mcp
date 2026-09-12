@@ -16,7 +16,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | Start line keys | `pipeline_start.py` |
 | Config JSON check | `pipeline_config.py` |
 | Timescaling logs | `timescaling_logs.py`, `object_store.py` |
-| Artifact folders and keys | `artifacts.py` |
+| Artifact folders, keys, and text | `artifacts.py` |
 | Lifecycle unload/jsonl folders | `lifecycle_artifacts.py` |
 | SSO device login | `settings_sso.py`, `sso_url.py` |
 | EKS token | `eks_token.py` |
@@ -39,6 +39,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 - Timescaling logs: `{batchtime}/{client}/{comptype}/timescaling/logs/`, else `{batchtime}/logs/{client}_{batchtime}_{comptype}_replica_0/`, else without `_replica_0`
 - Artifact folders: `{batchtime}/{client}/{comptype}/` grouped by first child folder
 - Artifact files: `{batchtime}/{client}/{comptype}/{folder}/` keys relative to that prefix
+- Artifact text: `{batchtime}/{client}/{comptype}/{folder}/{key}` short head of one json/jsonl/log object; not parquet
 - Lifecycle unload folders: `{batchtime}/rust-unloads/{request_id}/` grouped by first child folder
 - Lifecycle unload files: `{batchtime}/rust-unloads/{request_id}/{folder}/` keys relative to that prefix
 - Lifecycle jsonl names: `{batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/`

@@ -417,6 +417,37 @@ async def test_list_pipeline_artifact_files_tool_reads_store() -> None:
     ]
 
 
+async def test_get_pipeline_artifact_text_tool_reads_store() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def list_keys(self, prefix: str) -> tuple[str, ...]:
+            _ = prefix
+            return ()
+
+        def get_bytes(self, key: str) -> bytes:
+            assert key == "202608/acme/dashboard/timescaling/model_input/part-0.json"
+            return b'{"ok": true}\n'
+
+    set_object_store_factory(Store)
+    try:
+        result = await mcp.call_tool(
+            "get_pipeline_artifact_text",
+            {
+                "client": "acme",
+                "batchtime": "202608",
+                "comptype": "dashboard",
+                "folder": "timescaling",
+                "key": "model_input/part-0.json",
+            },
+        )
+    finally:
+        set_object_store_factory(None)
+    value = _page_from_tool(result)
+    assert value["prefix"] == "202608/acme/dashboard/timescaling/"
+    assert value["key"] == "model_input/part-0.json"
+    assert value["text"] == '{"ok": true}\n'
+
+
 async def test_list_pipeline_lifecycle_artifacts_tool_reads_store() -> None:
     request_id = "11111111-1111-1111-1111-111111111111"
 

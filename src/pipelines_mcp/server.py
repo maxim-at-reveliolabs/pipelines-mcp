@@ -7,7 +7,12 @@ from inspect import cleandoc
 from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
-from pipelines_mcp.artifacts import list_artifact_files, list_artifacts
+from pipelines_mcp.artifacts import (
+    ArtifactTextRequest,
+    get_artifact_text,
+    list_artifact_files,
+    list_artifacts,
+)
 from pipelines_mcp.lifecycle_artifacts import (
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
@@ -16,6 +21,7 @@ from pipelines_mcp.logs import LogRequest, fetch_logs, nonempty
 from pipelines_mcp.models import (
     ArtifactFiles,
     ArtifactListing,
+    ArtifactText,
     Job,
     LifecycleArtifacts,
     LogKind,
@@ -77,6 +83,9 @@ get_pipeline_job_config.
 After list_pipeline_artifacts, pass a folder name to
 list_pipeline_artifact_files to see files inside it (model_input vs
 model_output, parquet parts, log dirs).
+get_pipeline_artifact_text reads a short head of one small json/jsonl/log
+object. Pass the relative key from list_pipeline_artifact_files. Do not
+use it for parquet.
 list_pipeline_lifecycle_artifacts lists unload folders and shared jsonl
 names. Pass batchtime and the request_id UUID. Rust job artifacts stay
 on list_pipeline_artifacts.
@@ -405,6 +414,32 @@ async def list_pipeline_artifact_files(
         batchtime,
         comptype,
         folder,
+    )
+
+
+@_tool
+async def get_pipeline_artifact_text(
+    client: str,
+    batchtime: str,
+    comptype: str,
+    folder: str,
+    key: str,
+) -> ArtifactText:
+    """Short text head of one rust artifact object.
+
+    After list_pipeline_artifact_files, pass a relative key to read a short
+    head of one small json, jsonl, or log object. Do not use it for parquet.
+    """
+    return await run_sync(
+        get_artifact_text,
+        get_object_store(),
+        ArtifactTextRequest(
+            client=client,
+            batchtime=batchtime,
+            comptype=comptype,
+            folder=folder,
+            key=key,
+        ),
     )
 
 
