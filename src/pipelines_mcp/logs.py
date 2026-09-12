@@ -156,16 +156,6 @@ class _EsResponse(BaseModel):
     hits: _EsHits = _EsHits()
 
 
-def _check_cursor(payload: _CursorPayload, request: LogRequest, mode: LogMode) -> None:
-    mismatched = (
-        payload.kind != request.log_kind
-        or payload.mode != mode
-        or payload.req != request.request_id
-    )
-    if mismatched:
-        raise SettingsError(reason="invalid cursor")
-
-
 def cap_log_bytes[T](
     items: tuple[T, ...],
     *,
@@ -290,7 +280,13 @@ async def fetch_logs(
     prior_sa: list[str | int | float] | None = None
     if normalized.cursor is not None:
         payload = decode_log_cursor(normalized.cursor, _CursorPayload)
-        _check_cursor(payload, normalized, mode)
+        mismatched = (
+            payload.kind != normalized.log_kind
+            or payload.mode != mode
+            or payload.req != normalized.request_id
+        )
+        if mismatched:
+            raise SettingsError(reason="invalid cursor")
         prior_sa = payload.sa
     match mode:
         case LogMode.TAIL:
