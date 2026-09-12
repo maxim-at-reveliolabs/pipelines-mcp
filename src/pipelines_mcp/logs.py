@@ -83,14 +83,12 @@ class LogRequest:
     full: bool = False
 
 
-@dataclass(frozen=True, slots=True)
-class _SearchPage:
-    order: str
-    size: int
-    search_after: list[str | int | float] | None
-
-
-def _search_body(request: LogRequest, page: _SearchPage) -> dict[str, JsonValue]:
+def _search_body(
+    request: LogRequest,
+    order: str,
+    size: int,
+    search_after: list[str | int | float] | None,
+) -> dict[str, JsonValue]:
     match request.log_kind:
         case LogKind.SERVICE:
             field = "parsed.pipeline-id"
@@ -98,11 +96,11 @@ def _search_body(request: LogRequest, page: _SearchPage) -> dict[str, JsonValue]
             field = "kubernetes.pod_name"
     body: dict[str, JsonValue] = {
         "query": {"query_string": {"query": f'{field}:"{request.request_id}"'}},
-        "sort": [{"@timestamp": {"order": page.order}}],
-        "size": page.size,
+        "sort": [{"@timestamp": {"order": order}}],
+        "size": size,
     }
-    if page.search_after is not None:
-        body["search_after"] = page.search_after
+    if search_after is not None:
+        body["search_after"] = search_after
     return body
 
 
@@ -302,10 +300,7 @@ async def fetch_logs(
             order = "asc"
             page_size = FULL_MAX_HITS if size is None else size
     content = json.dumps(
-        _search_body(
-            normalized,
-            _SearchPage(order=order, size=page_size, search_after=prior_sa),
-        ),
+        _search_body(normalized, order, page_size, prior_sa),
         separators=(",", ":"),
     ).encode("utf-8")
     try:
