@@ -14,6 +14,7 @@ from kubernetes.client import (
     V1PodList,
     V1PodTemplateSpec,
 )
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, InputRequiredResult
 from pydantic import SecretStr, TypeAdapter
 
@@ -238,6 +239,45 @@ async def test_search_log_query_string_has_filter_and_text(
     clause = query["query_string"]
     assert isinstance(clause, dict)
     assert clause["query"] == f'{filter_text} AND "boom"'
+
+
+async def test_get_pipeline_step_log_filters_by_job_name() -> None:
+    hits: list[dict[str, JsonValue]] = [
+        {"_source": {"log": "step-ok"}, "sort": ["t1"]},
+    ]
+    async with _wired(hits=hits) as recorder:
+        result = await mcp.call_tool(
+            "get_pipeline_step_log",
+            {"request_id": "req-1", "step_index": 2, "replica": 0},
+        )
+    value = _page_from_tool(result)
+    assert value["lines"] == ["step-ok"]
+    query = recorder.bodies[0]["query"]
+    assert isinstance(query, dict)
+    clause = query["query_string"]
+    assert isinstance(clause, dict)
+    assert clause["query"] == 'kubernetes.pod_name:"pipelines-req-1-2-0"'
+
+
+async def test_get_pipeline_step_log_rejects_uuid_cursor() -> None:
+    hits: list[dict[str, JsonValue]] = [
+        {"_source": {"log": "mixed"}, "sort": ["t1"]},
+    ]
+    async with _wired(hits=hits):
+        mixed = await mcp.call_tool("get_pipeline_log", {"request_id": "req-1"})
+        page = _page_from_tool(mixed)
+        cursor = page["cursor"]
+        assert isinstance(cursor, str)
+        with pytest.raises(ToolError, match="invalid cursor"):
+            _ = await mcp.call_tool(
+                "get_pipeline_step_log",
+                {
+                    "request_id": "req-1",
+                    "step_index": 2,
+                    "replica": 0,
+                    "cursor": cursor,
+                },
+            )
 
 
 async def test_timescaling_log_tool_reads_store() -> None:

@@ -50,6 +50,8 @@ pipeline id.
 
 If the user already gave a request_id UUID, call get_pipeline_status
 next. Then get_pipeline_log and get_pipeline_service_log.
+When a run has many steps, use get_pipeline_step_log instead of mixed
+get_pipeline_log.
 search_pipeline_log and search_pipeline_service_log find matching lines
 in those logs. query is required.
 get_pipeline_start returns the keys from the service line that starts the
@@ -217,6 +219,28 @@ async def get_pipeline_log(
     cursor. Pass cursor to get only new lines. full=true still caps size.
     """
     return await _es_log(request_id, LogKind.PIPELINE, cursor, full=full)
+
+
+@_tool
+async def get_pipeline_step_log(
+    request_id: str,
+    step_index: int,
+    replica: int,
+    cursor: str | None = None,
+    *,
+    full: bool = False,
+) -> LogPage:
+    """Worker logs for one job.
+
+    Use this when a run has many steps. get_pipeline_log mixes every step.
+    Same cursor rules as get_pipeline_log.
+    """
+    return await _es_log(
+        _job_name(request_id, step_index, replica),
+        LogKind.PIPELINE,
+        cursor,
+        full=full,
+    )
 
 
 @_tool

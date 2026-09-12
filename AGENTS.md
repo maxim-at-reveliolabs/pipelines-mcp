@@ -33,6 +33,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 - ES secret `elasticsearch/elastic`
 - Pipeline service login secret `pipelines/prod/service_pipelines_user_prod@reveliolabs.com`
 - Job name `pipelines-{request_id}-{step_index}-{replica}`
+- Step worker logs filter by job name
 - Timescaling logs: `{batchtime}/{client}/{comptype}/timescaling/logs/`, else `{batchtime}/logs/{client}_{batchtime}_{comptype}_replica_0/`, else without `_replica_0`
 - Artifact folders: `{batchtime}/{client}/{comptype}/` grouped by first child folder
 

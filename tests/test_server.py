@@ -19,6 +19,7 @@ _NAMES: Final[tuple[str, ...]] = (
     "get_pipeline_pod",
     "get_pipeline_pod_config",
     "get_pipeline_log",
+    "get_pipeline_step_log",
     "get_pipeline_service_log",
     "search_pipeline_log",
     "search_pipeline_service_log",
@@ -29,7 +30,7 @@ _NAMES: Final[tuple[str, ...]] = (
 )
 
 
-async def test_lists_exactly_fifteen_tool_names() -> None:
+async def test_lists_exactly_sixteen_tool_names() -> None:
     tools = await mcp.list_tools()
     names = tuple(tool.name for tool in tools)
     assert names == _NAMES
@@ -39,6 +40,7 @@ async def test_lists_exactly_fifteen_tool_names() -> None:
     ("tool", "args"),
     [
         ("get_pipeline_log", {"request_id": ""}),
+        ("get_pipeline_step_log", {"request_id": "", "step_index": 0, "replica": 0}),
         ("get_pipeline_status", {"request_id": ""}),
         ("get_pipeline_pod", {"pod_name": ""}),
         ("search_pipeline_log", {"request_id": "r1", "query": ""}),
@@ -46,7 +48,7 @@ async def test_lists_exactly_fifteen_tool_names() -> None:
     ],
 )
 async def test_empty_required_token_raises_tool_error(
-    tool: str, args: dict[str, str]
+    tool: str, args: dict[str, str | int]
 ) -> None:
     with pytest.raises(ToolError):
         _ = await mcp.call_tool(tool, args)
