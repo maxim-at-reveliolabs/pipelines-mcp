@@ -3,7 +3,7 @@ from gzip import compress
 
 import pytest
 
-from pipelines_mcp.errors import EmptyQueryError, InvalidCursorError
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.timescaling_logs import (
     TimescalingLogRequest,
     fetch_timescaling_logs,
@@ -180,9 +180,8 @@ async def test_bad_client_raises(client: str) -> None:
 
     # When: logs are fetched
     # Then: the client is rejected
-    with pytest.raises(EmptyQueryError) as caught:
+    with pytest.raises(SettingsError, match="empty client"):
         _ = await fetch_timescaling_logs(store, _request(client=client))
-    assert caught.value.field == "client"
 
 
 async def test_invalid_cursor_raises() -> None:
@@ -191,7 +190,7 @@ async def test_invalid_cursor_raises() -> None:
 
     # When: logs are fetched with that cursor
     # Then: the call fails as an invalid cursor
-    with pytest.raises(InvalidCursorError):
+    with pytest.raises(SettingsError, match="invalid cursor"):
         _ = await fetch_timescaling_logs(store, _request(cursor="not-a-cursor"))
 
 
@@ -203,7 +202,7 @@ async def test_mismatched_cursor_raises() -> None:
 
     # When: the same cursor is reused with a different client
     # Then: the call fails as an invalid cursor
-    with pytest.raises(InvalidCursorError):
+    with pytest.raises(SettingsError, match="invalid cursor"):
         _ = await fetch_timescaling_logs(
             store, _request(client="other", cursor=first.cursor)
         )

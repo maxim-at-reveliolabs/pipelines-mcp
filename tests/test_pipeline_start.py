@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from pipelines_mcp.errors import PipelineStartError
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.pipeline_start import parse_start
 
 _ARGUMENTS: str = '{ "batchtime": "202608", "client": "isaca" }'
@@ -39,7 +39,7 @@ def test_parse_start_returns_keys_and_leaves_arguments_intact() -> None:
 
 def test_parse_start_raises_when_line_is_missing() -> None:
     noise = json.dumps({"message": "pipeline request queued"})
-    with pytest.raises(PipelineStartError, match="No starting pipeline line"):
+    with pytest.raises(SettingsError, match="No starting pipeline line"):
         _ = parse_start((noise,))
 
 
@@ -51,5 +51,5 @@ def test_parse_start_raises_when_line_is_missing() -> None:
     ],
 )
 def test_parse_start_raises_when_start_line_is_not_valid(line: str) -> None:
-    with pytest.raises(PipelineStartError, match="not valid"):
+    with pytest.raises(SettingsError, match="not valid"):
         _ = parse_start((line,))

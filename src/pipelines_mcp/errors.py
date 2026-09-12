@@ -6,13 +6,13 @@ from typing import override
 
 @dataclass(frozen=True, slots=True)
 class SettingsError(Exception):
-    """Settings failed to load or failed a parse check."""
+    """A tool call failed with a stable message."""
 
     reason: str
 
     @override
     def __str__(self) -> str:
-        """Return the parse failure reason."""
+        """Return the failure reason."""
         return self.reason
 
 
@@ -44,37 +44,3 @@ class SsoLoginRequiredError(Exception):
             "AWS login required. Open this URL, then retry the same request: "
             f"{self.url}"
         )
-
-
-@dataclass(frozen=True, slots=True)
-class InvalidCursorError(Exception):
-    """A log cursor is malformed or does not match this call."""
-
-    @override
-    def __str__(self) -> str:
-        """Return a stable invalid-cursor message."""
-        return "invalid cursor"
-
-
-@dataclass(frozen=True, slots=True)
-class EmptyQueryError(Exception):
-    """A required query field was empty after strip."""
-
-    field: str
-
-    @override
-    def __str__(self) -> str:
-        """Return a stable empty-field message."""
-        return f"empty {self.field}"
-
-
-@dataclass(frozen=True, slots=True)
-class PipelineStartError(Exception):
-    """The service line that starts the job is missing or not valid."""
-
-    reason: str
-
-    @override
-    def __str__(self) -> str:
-        """Return the start-line failure reason."""
-        return self.reason

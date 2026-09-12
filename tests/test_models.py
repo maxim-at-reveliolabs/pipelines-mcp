@@ -4,10 +4,7 @@ from dataclasses import is_dataclass
 import pytest
 
 from pipelines_mcp.errors import (
-    EmptyQueryError,
-    InvalidCursorError,
     NotFoundError,
-    PipelineStartError,
     SettingsError,
     SsoLoginRequiredError,
 )
@@ -96,9 +93,9 @@ def test_enum_members(
     ("error", "text"),
     [
         (SettingsError(reason="missing field"), "missing field"),
+        (SettingsError(reason="invalid cursor"), "invalid cursor"),
+        (SettingsError(reason="empty q"), "empty q"),
         (NotFoundError(entity="request"), "request not found"),
-        (InvalidCursorError(), "invalid cursor"),
-        (EmptyQueryError(field="q"), "empty q"),
         (
             SsoLoginRequiredError(url="https://example.test/login"),
             "https://example.test/login",
@@ -106,10 +103,6 @@ def test_enum_members(
         (
             SsoLoginRequiredError(url="https://example.test/login", helper=True),
             "AWS login started. Retry the same request.",
-        ),
-        (
-            PipelineStartError(reason="No starting pipeline line yet."),
-            "No starting pipeline line yet.",
         ),
     ],
 )

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal
 from anyio.to_thread import run_sync
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from pipelines_mcp.errors import EmptyQueryError, InvalidCursorError, SettingsError
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.logs import FULL_MAX_HITS, TAIL_LINES, LogMode, cap_log_bytes
 from pipelines_mcp.models import LogPage
 from pipelines_mcp.redact import redact_text
@@ -50,7 +50,7 @@ class _CursorPayload(BaseModel):
 def _token(raw: str, field: str) -> str:
     stripped = raw.strip()
     if stripped == "" or "/" in stripped:
-        raise EmptyQueryError(field=field)
+        raise SettingsError(reason=f"empty {field}")
     return stripped
 
 
@@ -92,7 +92,7 @@ def _decode_cursor(cursor: str) -> _CursorPayload:
         raw = base64.b64decode(cursor.encode("ascii"), validate=True)
         return _CursorPayload.model_validate_json(raw)
     except (ValueError, binascii.Error, UnicodeError, ValidationError) as exc:
-        raise InvalidCursorError from exc
+        raise SettingsError(reason="invalid cursor") from exc
 
 
 def _cursor_for(
@@ -181,7 +181,7 @@ async def fetch_timescaling_logs(
             or payload.comptype != normalized.comptype
         )
         if mismatched:
-            raise InvalidCursorError
+            raise SettingsError(reason="invalid cursor")
         prior_sa = payload.sa
     name = f"{normalized.client}_{normalized.batchtime}_{normalized.comptype}"
     prefixes = (

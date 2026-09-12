@@ -5,7 +5,7 @@ import httpx2
 import pytest
 from pydantic import SecretStr, TypeAdapter, ValidationError
 
-from pipelines_mcp.errors import InvalidCursorError, SettingsError
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.logs import (
     LogRequest,
     create_async_client,
@@ -181,7 +181,7 @@ async def test_invalid_cursor_raises() -> None:
 
     # When: logs are fetched with that cursor
     # Then: the call fails as an invalid cursor
-    with pytest.raises(InvalidCursorError):
+    with pytest.raises(SettingsError, match="invalid cursor"):
         _ = await _fetch(request, [])
 
 
@@ -197,7 +197,7 @@ async def test_mismatched_cursor_raises() -> None:
 
     # When: the same cursor is reused with a different kind
     # Then: the call fails as an invalid cursor
-    with pytest.raises(InvalidCursorError):
+    with pytest.raises(SettingsError, match="invalid cursor"):
         _ = await _fetch(mismatched, [])
 
 

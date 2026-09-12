@@ -12,7 +12,7 @@ from typing import ClassVar, Final, Literal
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from pipelines_mcp.errors import EmptyQueryError, InvalidCursorError, SettingsError
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.models import LogKind, LogPage
 from pipelines_mcp.redact import redact_text
 from pipelines_mcp.settings import EsAuth, load_es_auth
@@ -164,7 +164,7 @@ def _decode_cursor(cursor: str) -> _CursorPayload:
         raw = base64.b64decode(cursor.encode("ascii"), validate=True)
         return _CursorPayload.model_validate_json(raw)
     except (ValueError, binascii.Error, UnicodeError, ValidationError) as exc:
-        raise InvalidCursorError from exc
+        raise SettingsError(reason="invalid cursor") from exc
 
 
 def _check_cursor(payload: _CursorPayload, request: LogRequest, mode: LogMode) -> None:
@@ -174,7 +174,7 @@ def _check_cursor(payload: _CursorPayload, request: LogRequest, mode: LogMode) -
         or payload.req != request.request_id
     )
     if mismatched:
-        raise InvalidCursorError
+        raise SettingsError(reason="invalid cursor")
 
 
 def cap_log_bytes[T](
@@ -267,7 +267,7 @@ def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
 def _normalize(request: LogRequest) -> LogRequest:
     request_id = request.request_id.strip()
     if request_id == "":
-        raise EmptyQueryError(field="request_id")
+        raise SettingsError(reason="empty request_id")
     return replace(request, request_id=request_id)
 
 

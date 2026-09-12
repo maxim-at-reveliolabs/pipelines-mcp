@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from pydantic import TypeAdapter, ValidationError
 
-from pipelines_mcp.errors import PipelineStartError
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.models import PipelineStart
 
 
@@ -25,9 +25,9 @@ def parse_start(lines: Sequence[str]) -> PipelineStart:
                 pipeline_id=payload["pipeline-id"],
             )
         except (ValidationError, KeyError) as err:
-            raise PipelineStartError(
+            raise SettingsError(
                 reason="starting pipeline line is not valid"
             ) from err
-    raise PipelineStartError(
+    raise SettingsError(
         reason="No starting pipeline line yet. Retry after the service queues the job."
     )

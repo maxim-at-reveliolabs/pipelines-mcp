@@ -6,7 +6,7 @@ from functools import wraps
 from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
-from pipelines_mcp.errors import EmptyQueryError
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.logs import LogRequest, fetch_logs
 from pipelines_mcp.models import (
     Job,
@@ -83,7 +83,7 @@ def _tool[**P, R](
 def _nonempty(raw: str, field: str) -> str:
     stripped = raw.strip()
     if stripped == "":
-        raise EmptyQueryError(field=field)
+        raise SettingsError(reason=f"empty {field}")
     return stripped
 
 

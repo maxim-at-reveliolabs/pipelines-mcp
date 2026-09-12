@@ -9,10 +9,7 @@ import httpx2
 from mcp.server.mcpserver.exceptions import ToolError
 
 from pipelines_mcp.errors import (
-    EmptyQueryError,
-    InvalidCursorError,
     NotFoundError,
-    PipelineStartError,
     SettingsError,
     SsoLoginRequiredError,
 )
@@ -134,13 +131,7 @@ async def tool_boundary() -> AsyncGenerator[None]:
             )
         )
         raise ToolError(redact_text(gone)) from exc
-    except (
-        K8sApiError,
-        InvalidCursorError,
-        SettingsError,
-        EmptyQueryError,
-        PipelineStartError,
-    ) as exc:
+    except (K8sApiError, SettingsError) as exc:
         raise ToolError(redact_text(str(exc))) from exc
     except Exception as exc:
         if not sso_auth_expired(exc):

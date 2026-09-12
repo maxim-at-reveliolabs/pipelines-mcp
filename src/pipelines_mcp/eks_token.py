@@ -17,9 +17,9 @@ from typing import (
     TypedDict,
     TypeIs,
     final,
-    override,
 )
 
+from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.settings import AWS_PROFILE, AWS_REGION
 
 if TYPE_CHECKING:
@@ -86,18 +86,6 @@ class TokenMint:
     # botocore RequestSigner weakrefs the STS client; keep session and client alive.
     session: Session | None = None
     sts: STSClient | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class EksAuthError(Exception):
-    """EKS token or cluster lookup failed."""
-
-    reason: str
-
-    @override
-    def __str__(self) -> str:
-        """Return the failure reason."""
-        return self.reason
 
 
 def mint_token(mint: TokenMint) -> str:
@@ -218,7 +206,7 @@ def _sts_signer(session: Session) -> tuple[PresignSigner, STSClient]:
 
     credentials = session.get_credentials()
     if credentials is None:
-        raise EksAuthError(reason="AWS credentials are missing")
+        raise SettingsError(reason="AWS credentials are missing")
     sts: STSClient = session.client("sts", region_name=AWS_REGION)
     signer = RequestSigner(
         sts.meta.service_model.service_id,
