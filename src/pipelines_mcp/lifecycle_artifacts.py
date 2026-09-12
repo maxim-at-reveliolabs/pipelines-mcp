@@ -1,12 +1,18 @@
-"""Lifecycle unload folders, files, and jsonl names from an injected object store."""
+"""Lifecycle unload folders, files, jsonl names, and short text heads."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pipelines_mcp.artifacts import child_folders, child_keys
+from pipelines_mcp.artifacts import (
+    child_folders,
+    child_keys,
+    folder_prefix,
+    object_text,
+)
 from pipelines_mcp.logs import path_segment
-from pipelines_mcp.models import ArtifactFiles, LifecycleArtifacts
+from pipelines_mcp.models import ArtifactFiles, ArtifactText, LifecycleArtifacts
 
 if TYPE_CHECKING:
     from pipelines_mcp.object_store import ObjectStore
@@ -52,8 +58,30 @@ def list_lifecycle_artifact_files(
     folder: str,
 ) -> ArtifactFiles:
     """List object keys under one lifecycle unload folder."""
-    prefix = (
-        f"{_unloads_prefix(batchtime, request_id)}"
-        f"{path_segment(folder, 'folder')}/"
-    )
+    prefix = folder_prefix(_unloads_prefix(batchtime, request_id), folder)
     return ArtifactFiles(prefix=prefix, keys=child_keys(store, prefix))
+
+
+@dataclass(frozen=True, slots=True)
+class LifecycleArtifactTextRequest:
+    """One lifecycle unload object to read as text."""
+
+    batchtime: str
+    request_id: str
+    folder: str
+    key: str
+
+
+def get_lifecycle_artifact_text(
+    store: ObjectStore,
+    request: LifecycleArtifactTextRequest,
+) -> ArtifactText:
+    """Return a short redacted text head of one lifecycle unload object."""
+    return object_text(
+        store,
+        folder_prefix(
+            _unloads_prefix(request.batchtime, request.request_id),
+            request.folder,
+        ),
+        request.key,
+    )

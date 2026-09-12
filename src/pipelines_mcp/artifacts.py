@@ -43,6 +43,11 @@ def child_folders(store: ObjectStore, prefix: str) -> tuple[ArtifactFolder, ...]
     )
 
 
+def folder_prefix(prefix: str, folder: str) -> str:
+    """Join prefix with one validated folder name."""
+    return f"{prefix}{path_segment(folder, 'folder')}/"
+
+
 def child_keys(store: ObjectStore, prefix: str) -> tuple[str, ...]:
     """Object keys under prefix, relative to that prefix."""
     return tuple(
@@ -73,10 +78,7 @@ def list_artifact_files(
     folder: str,
 ) -> ArtifactFiles:
     """List object keys under one rust artifact folder."""
-    prefix = (
-        f"{_artifact_prefix(client, batchtime, comptype)}"
-        f"{path_segment(folder, 'folder')}/"
-    )
+    prefix = folder_prefix(_artifact_prefix(client, batchtime, comptype), folder)
     return ArtifactFiles(prefix=prefix, keys=child_keys(store, prefix))
 
 
@@ -91,32 +93,38 @@ class ArtifactTextRequest:
     key: str
 
 
-def _decode(key: str, raw: bytes) -> str:
+def object_text(store: ObjectStore, prefix: str, key: str) -> ArtifactText:
+    """Return a short redacted text head of one object under prefix."""
+    stripped = nonempty(key, "key")
+    if stripped.startswith("/") or ".." in stripped or "" in stripped.split("/"):
+        raise DomainError(reason="empty key")
+    if stripped.lower().endswith(".parquet"):
+        raise DomainError(reason="parquet is not text")
+    raw = store.get_bytes(f"{prefix}{stripped}")
     body = raw
-    if key.endswith(".gz"):
+    if stripped.endswith(".gz"):
         try:
             body = gzip.decompress(raw)
         except OSError as exc:
             raise DomainError(reason="object store unreachable") from exc
     if body.startswith(_PARQUET_MAGIC):
         raise DomainError(reason="parquet is not text")
-    return body.decode("utf-8", errors="replace")
+    text = redact_text(body.decode("utf-8", errors="replace"))
+    encoded = text.encode("utf-8")
+    if len(encoded) > _TEXT_CAP:
+        text = encoded[:_TEXT_CAP].decode("utf-8", errors="replace")
+    return ArtifactText(prefix=prefix, key=stripped, text=text)
 
 
 def get_artifact_text(store: ObjectStore, request: ArtifactTextRequest) -> ArtifactText:
     """Return a short redacted text head of one rust artifact object."""
-    prefix = (
-        f"{_artifact_prefix(request.client, request.batchtime, request.comptype)}"
-        f"{path_segment(request.folder, 'folder')}/"
+    return object_text(
+        store,
+        folder_prefix(
+            _artifact_prefix(
+                request.client, request.batchtime, request.comptype
+            ),
+            request.folder,
+        ),
+        request.key,
     )
-    key = nonempty(request.key, "key")
-    if key.startswith("/") or ".." in key or "" in key.split("/"):
-        raise DomainError(reason="empty key")
-    if key.lower().endswith(".parquet"):
-        raise DomainError(reason="parquet is not text")
-    raw = store.get_bytes(f"{prefix}{key}")
-    text = redact_text(_decode(key, raw))
-    encoded = text.encode("utf-8")
-    if len(encoded) > _TEXT_CAP:
-        text = encoded[:_TEXT_CAP].decode("utf-8", errors="replace")
-    return ArtifactText(prefix=prefix, key=key, text=text)

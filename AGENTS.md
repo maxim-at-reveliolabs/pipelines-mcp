@@ -19,7 +19,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | Config JSON check | `pipeline_config.py` |
 | Timescaling logs | `timescaling_logs.py`, `object_store.py` |
 | Artifact folders, keys, and text | `artifacts.py` |
-| Lifecycle unload/jsonl folders | `lifecycle_artifacts.py` |
+| Lifecycle unload/jsonl folders and text | `lifecycle_artifacts.py` |
 | SSO device login | `settings_sso.py`, `sso_url.py` |
 | EKS token | `eks_token.py` |
 | ES auth | `settings.py` |
@@ -44,6 +44,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 - Artifact text: `{batchtime}/{client}/{comptype}/{folder}/{key}` short head of one json/jsonl/log object; not parquet
 - Lifecycle unload folders: `{batchtime}/rust-unloads/{request_id}/` grouped by first child folder
 - Lifecycle unload files: `{batchtime}/rust-unloads/{request_id}/{folder}/` keys relative to that prefix
+- Lifecycle unload text: `{batchtime}/rust-unloads/{request_id}/{folder}/{key}` short head of one json/jsonl/log object; not parquet
 - Lifecycle jsonl names: `{batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/`
 
 ## Conventions

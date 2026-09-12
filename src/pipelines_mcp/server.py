@@ -14,6 +14,8 @@ from pipelines_mcp.artifacts import (
     list_artifacts,
 )
 from pipelines_mcp.lifecycle_artifacts import (
+    LifecycleArtifactTextRequest,
+    get_lifecycle_artifact_text,
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
 )
@@ -99,6 +101,9 @@ names. Pass batchtime and the request_id UUID. Rust job artifacts stay
 on list_pipeline_artifacts.
 After list_pipeline_lifecycle_artifacts, pass a folder name to
 list_pipeline_lifecycle_artifact_files to see files inside it.
+get_pipeline_lifecycle_artifact_text reads a short head of one small
+json/jsonl/log object. Pass the relative key from
+list_pipeline_lifecycle_artifact_files. Do not use it for parquet.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
 Use the log tools instead.
@@ -513,6 +518,31 @@ async def list_pipeline_lifecycle_artifact_files(
         batchtime,
         request_id,
         folder,
+    )
+
+
+@_tool
+async def get_pipeline_lifecycle_artifact_text(
+    batchtime: str,
+    request_id: str,
+    folder: str,
+    key: str,
+) -> ArtifactText:
+    """Short text head of one lifecycle unload object.
+
+    After list_pipeline_lifecycle_artifact_files, pass a relative key to
+    read a short head of one small json, jsonl, or log object. Do not use
+    it for parquet.
+    """
+    return await run_sync(
+        get_lifecycle_artifact_text,
+        get_object_store(),
+        LifecycleArtifactTextRequest(
+            batchtime=batchtime,
+            request_id=request_id,
+            folder=folder,
+            key=key,
+        ),
     )
 
 

@@ -4,14 +4,29 @@ import pytest
 
 from pipelines_mcp.errors import DomainError
 from pipelines_mcp.lifecycle_artifacts import (
+    LifecycleArtifactTextRequest,
+    get_lifecycle_artifact_text,
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
 )
-from pipelines_mcp.models import ArtifactFiles, ArtifactFolder, LifecycleArtifacts
+from pipelines_mcp.models import (
+    ArtifactFiles,
+    ArtifactFolder,
+    ArtifactText,
+    LifecycleArtifacts,
+)
 
 _REQUEST: str = "11111111-1111-1111-1111-111111111111"
 _UNLOADS: str = f"202608/rust-unloads/{_REQUEST}/"
 _JSONL: str = "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
+_BAD_SEGMENTS: tuple[tuple[str, str, str, str], ...] = (
+    ("  ", _REQUEST, "reference", "batchtime"),
+    ("2026/08", _REQUEST, "reference", "batchtime"),
+    ("202608", "  ", "reference", "request_id"),
+    ("202608", "aa/bb", "reference", "request_id"),
+    ("202608", _REQUEST, "  ", "folder"),
+    ("202608", _REQUEST, "a/b", "folder"),
+)
 
 
 @dataclass(slots=True)
@@ -124,14 +139,7 @@ def test_skips_the_unload_prefix_key() -> None:
 
 @pytest.mark.parametrize(
     ("batchtime", "request_id", "folder", "field"),
-    [
-        ("  ", _REQUEST, "reference", "batchtime"),
-        ("2026/08", _REQUEST, "reference", "batchtime"),
-        ("202608", "  ", "reference", "request_id"),
-        ("202608", "aa/bb", "reference", "request_id"),
-        ("202608", _REQUEST, "  ", "folder"),
-        ("202608", _REQUEST, "a/b", "folder"),
-    ],
+    _BAD_SEGMENTS,
 )
 def test_bad_file_path_segment_raises(
     batchtime: str, request_id: str, folder: str, field: str
@@ -139,4 +147,60 @@ def test_bad_file_path_segment_raises(
     with pytest.raises(DomainError, match=f"empty {field}"):
         _ = list_lifecycle_artifact_files(
             FakeStore(keys=()), batchtime, request_id, folder
+        )
+
+
+@dataclass(slots=True)
+class BytesStore:
+    objects: dict[str, bytes]
+    reads: list[str] = field(default_factory=list)
+
+    def list_keys(self, prefix: str) -> tuple[str, ...]:
+        return tuple(key for key in self.objects if key.startswith(prefix))
+
+    def get_bytes(self, key: str) -> bytes:
+        self.reads.append(key)
+        body = self.objects.get(key)
+        if body is None:
+            raise DomainError(reason="object not found")
+        return body
+
+
+def test_reads_json_text_for_relative_key_with_slashes() -> None:
+    store = BytesStore(
+        objects={f"{_UNLOADS}reference/nested/plan.json": b'{"ok": true}\n'}
+    )
+    result = get_lifecycle_artifact_text(
+        store,
+        LifecycleArtifactTextRequest(
+            batchtime="202608",
+            request_id=_REQUEST,
+            folder="reference",
+            key="nested/plan.json",
+        ),
+    )
+    assert result == ArtifactText(
+        prefix=f"{_UNLOADS}reference/",
+        key="nested/plan.json",
+        text='{"ok": true}\n',
+    )
+    assert store.reads == [f"{_UNLOADS}reference/nested/plan.json"]
+
+
+@pytest.mark.parametrize(
+    ("batchtime", "request_id", "folder", "field"),
+    _BAD_SEGMENTS,
+)
+def test_bad_text_path_segment_raises(
+    batchtime: str, request_id: str, folder: str, field: str
+) -> None:
+    with pytest.raises(DomainError, match=f"empty {field}"):
+        _ = get_lifecycle_artifact_text(
+            FakeStore(keys=()),
+            LifecycleArtifactTextRequest(
+                batchtime=batchtime,
+                request_id=request_id,
+                folder=folder,
+                key="plan.json",
+            ),
         )
