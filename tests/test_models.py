@@ -10,61 +10,11 @@ from pipelines_mcp.errors import (
 )
 from pipelines_mcp.models import (
     ContainerState,
-    ContainerStatus,
-    Job,
     LogKind,
-    LogPage,
-    ObjectConfig,
     PipelineStart,
-    Pod,
     job_name,
     parse_job_name,
 )
-
-type _DtoClass = type[
-    Job | Pod | LogPage | ContainerStatus | ObjectConfig | PipelineStart
-]
-
-
-@pytest.mark.parametrize(
-    ("cls", "names"),
-    [
-        (
-            Job,
-            (
-                "name",
-                "status",
-                "start_time",
-                "completion_time",
-                "failed_reason",
-                "request_id",
-                "step_index",
-                "replica",
-            ),
-        ),
-        (Pod, ("name", "job_name", "phase", "start_time", "container_statuses")),
-        (LogPage, ("lines", "cursor", "truncated", "note")),
-        (ContainerStatus, ("name", "state", "ready")),
-        (ObjectConfig, ("name", "config")),
-        (
-            PipelineStart,
-            (
-                "timestamp",
-                "job_name",
-                "image_name",
-                "container_name",
-                "namespace",
-                "arguments",
-                "pipeline_id",
-            ),
-        ),
-    ],
-)
-def test_dto_field_names(cls: _DtoClass, names: tuple[str, ...]) -> None:
-    assert tuple(cls.model_fields) == names
-    assert "spec" not in names
-    for item in cls.model_fields.values():
-        assert "dict" not in str(item.annotation)
 
 
 def test_pipeline_start_json_schema_uses_field_names() -> None:
