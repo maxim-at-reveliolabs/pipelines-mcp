@@ -90,6 +90,9 @@ unfixable = []
 "src/pipelines_mcp/pipeline_status.py" = [
     "D102",     # Protocol stubs
 ]
+"src/pipelines_mcp/pipeline_queue.py" = [
+    "D102",     # Protocol stubs
+]
 "src/pipelines_mcp/settings_sso.py" = [
     "N803",     # boto3 SSO argument names
     "PLR0913",  # injected SSO test seams

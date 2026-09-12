@@ -10,15 +10,17 @@ from pydantic import SecretStr
 from pipelines_mcp.errors import SsoLoginRequiredError
 from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import create_async_client
-from pipelines_mcp.models import PipelineStatus
+from pipelines_mcp.models import PipelineQueueItem, PipelineStatus
 from pipelines_mcp.server_app import (
     get_k8s,
     get_logs_client,
     get_object_store,
+    get_queue_store,
     get_status_store,
     set_k8s_factory,
     set_logs_factory,
     set_object_store_factory,
+    set_queue_store_factory,
     set_reauth,
     set_status_store_factory,
     tool_boundary,
@@ -92,6 +94,23 @@ async def test_get_object_store_does_not_check_sso() -> None:
     finally:
         set_reauth(None)
         set_object_store_factory(None)
+
+
+async def test_get_queue_store_does_not_check_sso() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def get(self) -> tuple[PipelineQueueItem, ...]:
+            raise NotImplementedError
+
+    store = Store()
+    set_queue_store_factory(lambda: store)
+    set_reauth(_raise_sso)
+    try:
+        got = get_queue_store()
+        assert got is store
+    finally:
+        set_reauth(None)
+        set_queue_store_factory(None)
 
 
 async def test_get_status_store_does_not_check_sso() -> None:

@@ -16,6 +16,7 @@ from pipelines_mcp.errors import (
 from pipelines_mcp.k8s import K8s, K8sApiError, live_k8s
 from pipelines_mcp.logs import create_async_client
 from pipelines_mcp.object_store import LogStore, live_log_store
+from pipelines_mcp.pipeline_queue import QueueStore, live_queue_store
 from pipelines_mcp.pipeline_status import StatusStore, live_status_store
 from pipelines_mcp.redact import redact_text
 from pipelines_mcp.settings_sso import request_sso, sso_auth_expired
@@ -31,10 +32,12 @@ class _Slot:
     k8s: K8s | None = None
     object_store: LogStore | None = None
     status_store: StatusStore | None = None
+    queue_store: QueueStore | None = None
     logs_factory: Callable[[], httpx2.AsyncClient] | None = None
     k8s_factory: Callable[[], K8s] | None = None
     object_store_factory: Callable[[], LogStore] | None = None
     status_store_factory: Callable[[], StatusStore] | None = None
+    queue_store_factory: Callable[[], QueueStore] | None = None
     reauth: Callable[[], None] | None = None
 
 
@@ -63,6 +66,12 @@ def set_status_store_factory(factory: Callable[[], StatusStore] | None) -> None:
     """Install the pipeline-service status factory."""
     _SLOT.status_store_factory = factory
     _SLOT.status_store = None
+
+
+def set_queue_store_factory(factory: Callable[[], QueueStore] | None) -> None:
+    """Install the pipeline-service queue factory."""
+    _SLOT.queue_store_factory = factory
+    _SLOT.queue_store = None
 
 
 def set_reauth(reauth: Callable[[], None] | None) -> None:
@@ -114,6 +123,14 @@ def get_status_store() -> StatusStore:
         factory = _SLOT.status_store_factory or live_status_store
         _SLOT.status_store = factory()
     return _SLOT.status_store
+
+
+def get_queue_store() -> QueueStore:
+    """Return the pipeline service queue store. Does not check SSO."""
+    if _SLOT.queue_store is None:
+        factory = _SLOT.queue_store_factory or live_queue_store
+        _SLOT.queue_store = factory()
+    return _SLOT.queue_store
 
 
 @asynccontextmanager

@@ -28,6 +28,7 @@ from pipelines_mcp.models import (
     LogPage,
     ObjectConfig,
     PipelineConfigCheck,
+    PipelineQueueItem,
     PipelineStart,
     PipelineStatus,
     PipelineStepRuns,
@@ -41,6 +42,7 @@ from pipelines_mcp.server_app import (
     get_k8s,
     get_logs_client,
     get_object_store,
+    get_queue_store,
     get_status_store,
     tool_boundary,
 )
@@ -66,6 +68,8 @@ If the user already gave a request_id UUID, call get_pipeline_status
 next. Then get_pipeline_step_status to see which DAG step failed.
 Overall status stays on get_pipeline_status. Then get_pipeline_log
 and get_pipeline_service_log.
+When get_pipeline_status is pending and there is no cluster job, call
+get_pipeline_queue to see if the run is waiting in the queue.
 When a run has many steps, use get_pipeline_step_log instead of mixed
 get_pipeline_log.
 search_pipeline_log and search_pipeline_service_log find matching lines
@@ -178,6 +182,16 @@ async def get_pipeline_status(request_id: str) -> PipelineStatus:
     return await run_sync(
         get_status_store().get, nonempty(request_id, "request_id")
     )
+
+
+@_tool
+async def get_pipeline_queue() -> tuple[PipelineQueueItem, ...]:
+    """Pending and waiting runs in pipeline service order.
+
+    Use when get_pipeline_status is pending and there is no cluster job.
+    Empty when nothing is waiting.
+    """
+    return await run_sync(get_queue_store().get)
 
 
 @_tool

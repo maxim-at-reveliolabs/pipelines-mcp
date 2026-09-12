@@ -20,12 +20,13 @@ from pydantic import SecretStr, TypeAdapter
 
 from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import JsonValue, create_async_client
-from pipelines_mcp.models import PipelineStatus, PipelineStepStatus
+from pipelines_mcp.models import PipelineQueueItem, PipelineStatus, PipelineStepStatus
 from pipelines_mcp.server import mcp
 from pipelines_mcp.server_app import (
     set_k8s_factory,
     set_logs_factory,
     set_object_store_factory,
+    set_queue_store_factory,
     set_reauth,
     set_status_store_factory,
 )
@@ -130,8 +131,47 @@ async def _wired(
         set_logs_factory(None)
         set_k8s_factory(None)
         set_status_store_factory(None)
+        set_queue_store_factory(None)
         set_reauth(None)
         await client.aclose()
+
+
+async def test_get_pipeline_queue_through_tool() -> None:
+    payload = (
+        PipelineQueueItem(request_id="r1", status="pending", queue_tag="high"),
+        PipelineQueueItem(request_id="r2", status="running", queue_tag="low"),
+    )
+
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def get(self) -> tuple[PipelineQueueItem, ...]:
+            return payload
+
+    set_queue_store_factory(Store)
+    try:
+        result = await mcp.call_tool("get_pipeline_queue", {})
+    finally:
+        set_queue_store_factory(None)
+    value = _tool_json(result)
+    assert value == [
+        {"request_id": "r1", "status": "pending", "queue_tag": "high"},
+        {"request_id": "r2", "status": "running", "queue_tag": "low"},
+    ]
+
+
+async def test_get_pipeline_queue_empty_through_tool() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def get(self) -> tuple[PipelineQueueItem, ...]:
+            return ()
+
+    set_queue_store_factory(Store)
+    try:
+        result = await mcp.call_tool("get_pipeline_queue", {})
+    finally:
+        set_queue_store_factory(None)
+    value = _tool_json(result)
+    assert value == []
 
 
 async def test_get_pipeline_status_through_tool() -> None:

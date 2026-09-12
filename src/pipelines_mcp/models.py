@@ -133,6 +133,15 @@ class PipelineStatus(BaseModel):
     steps: tuple[PipelineStepStatus, ...]
 
 
+class PipelineQueueItem(BaseModel):
+    """One waiting run in pipeline service order."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    request_id: str
+    status: str
+    queue_tag: str
+
+
 class PipelineStepRun(BaseModel):
     """One DAG step replica and its run status."""
 
