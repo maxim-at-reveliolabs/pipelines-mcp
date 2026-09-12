@@ -219,21 +219,18 @@ def _cursor_for(ctx: _PageCtx, sa: list[str | int | float] | None) -> str:
     )
 
 
-def _empty_note(kind: LogKind) -> str:
-    match kind:
-        case LogKind.PIPELINE:
-            return "No lines. Worker logs stay empty until a pod is running."
-        case LogKind.SERVICE:
-            return "No lines."
-
-
 def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
+    match ctx.request.log_kind:
+        case LogKind.PIPELINE:
+            empty = "No lines. Worker logs stay empty until a pod is running."
+        case LogKind.SERVICE:
+            empty = "No lines."
     if not hits:
         return LogPage(
             lines=(),
             cursor=_cursor_for(ctx, ctx.prior_sa),
             truncated=False,
-            note=_empty_note(ctx.request.log_kind),
+            note=empty,
         )
     match ctx.mode:
         case LogMode.TAIL:
@@ -255,7 +252,7 @@ def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
         lines=tuple(hit.line for hit in kept),
         cursor=_cursor_for(ctx, sa),
         truncated=dropped or len(hits) == ctx.size,
-        note=_empty_note(ctx.request.log_kind) if not kept else None,
+        note=empty if not kept else None,
     )
 
 
