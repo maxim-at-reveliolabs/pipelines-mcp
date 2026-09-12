@@ -12,6 +12,7 @@ from pipelines_mcp.settings import AWS_REGION
 
 if TYPE_CHECKING:
     from types_boto3_s3.client import S3Client
+    from types_boto3_s3.type_defs import ListObjectsV2RequestTypeDef
 
 _BUCKET: Final = "revelio-automated-pipelines"
 
@@ -34,14 +35,13 @@ class _BotoLogStore:
         token: str | None = None
         try:
             while True:
-                if token is None:
-                    response = self.client.list_objects_v2(
-                        Bucket=_BUCKET, Prefix=prefix
-                    )
-                else:
-                    response = self.client.list_objects_v2(
-                        Bucket=_BUCKET, Prefix=prefix, ContinuationToken=token
-                    )
+                request: ListObjectsV2RequestTypeDef = {
+                    "Bucket": _BUCKET,
+                    "Prefix": prefix,
+                }
+                if token is not None:
+                    request["ContinuationToken"] = token
+                response = self.client.list_objects_v2(**request)
                 for item in response.get("Contents") or []:
                     key = item.get("Key")
                     if key:
