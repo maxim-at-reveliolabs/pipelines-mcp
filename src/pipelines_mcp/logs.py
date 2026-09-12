@@ -3,7 +3,7 @@
 import base64
 import binascii
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum, unique
 from socket import IPPROTO_TCP, TCP_NODELAY
@@ -26,8 +26,8 @@ _ES_CONTENT_HEADERS: Final[Mapping[str, str]] = {
     "Content-Type": "application/vnd.elasticsearch+json; compatible-with=8",
 }
 
-_TAIL_LINES: Final[int] = 100
-_FULL_MAX_HITS: Final[int] = 500
+TAIL_LINES: Final[int] = 100
+FULL_MAX_HITS: Final[int] = 500
 _FULL_MAX_BYTES: Final[int] = 32768
 
 
@@ -177,28 +177,30 @@ def _check_cursor(payload: _CursorPayload, request: LogRequest, mode: LogMode) -
         raise InvalidCursorError
 
 
-def _cap_bytes(
-    hits: tuple[_Hit, ...],
+def cap_log_bytes[T](
+    items: tuple[T, ...],
     *,
     drop_from_front: bool,
-) -> tuple[tuple[_Hit, ...], bool]:
-    sizes = tuple(len(hit.line.encode("utf-8")) for hit in hits)
+    text_of: Callable[[T], str],
+) -> tuple[tuple[T, ...], bool]:
+    """Keep a prefix or suffix of items whose UTF-8 size fits the byte cap."""
+    sizes = tuple(len(text_of(item).encode("utf-8")) for item in items)
     total = sum(sizes)
     if total <= _FULL_MAX_BYTES:
-        return hits, False
+        return items, False
     if drop_from_front:
         index = 0
         running = total
-        while index < len(hits) and running > _FULL_MAX_BYTES:
+        while index < len(items) and running > _FULL_MAX_BYTES:
             running -= sizes[index]
             index += 1
-        return hits[index:], True
+        return items[index:], True
     end = 0
     running = 0
-    while end < len(hits) and running + sizes[end] <= _FULL_MAX_BYTES:
+    while end < len(items) and running + sizes[end] <= _FULL_MAX_BYTES:
         running += sizes[end]
         end += 1
-    return hits[:end], True
+    return items[:end], True
 
 
 def _to_hits(parsed: _EsResponse) -> tuple[_Hit, ...]:
@@ -248,9 +250,10 @@ def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
     redacted = tuple(
         _Hit(line=redact_text(hit.line), sort=hit.sort) for hit in chronological
     )
-    kept, dropped = _cap_bytes(
+    kept, dropped = cap_log_bytes(
         redacted,
         drop_from_front=ctx.mode is LogMode.TAIL,
+        text_of=lambda hit: hit.line,
     )
     sa = ctx.prior_sa if not kept else list(kept[-1].sort)
     return LogPage(
@@ -283,10 +286,10 @@ async def fetch_logs(
     match mode:
         case LogMode.TAIL:
             order = "asc" if normalized.cursor is not None else "desc"
-            size = _TAIL_LINES
+            size = TAIL_LINES
         case LogMode.FULL:
             order = "asc"
-            size = _FULL_MAX_HITS if normalized.size is None else normalized.size
+            size = FULL_MAX_HITS if normalized.size is None else normalized.size
     content = json.dumps(
         _search_body(
             normalized,

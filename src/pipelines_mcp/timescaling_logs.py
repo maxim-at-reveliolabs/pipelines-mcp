@@ -13,16 +13,13 @@ from anyio.to_thread import run_sync
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from pipelines_mcp.errors import EmptyQueryError, InvalidCursorError, SettingsError
-from pipelines_mcp.logs import LogMode
+from pipelines_mcp.logs import FULL_MAX_HITS, TAIL_LINES, LogMode, cap_log_bytes
 from pipelines_mcp.models import LogPage
 from pipelines_mcp.redact import redact_text
 
 if TYPE_CHECKING:
     from pipelines_mcp.object_store import LogStore
 
-_TAIL_LINES: Final = 100
-_FULL_MAX_HITS: Final = 500
-_FULL_MAX_BYTES: Final = 32768
 _PREFERRED: Final = ("stderr", "controller", "stdout")
 _EMPTY_NOTE: Final = (
     "No lines. Timescaling model logs stay empty until the model writes them."
@@ -115,30 +112,6 @@ def _cursor_for(
     return redact_text(base64.b64encode(raw).decode("ascii"))
 
 
-def _cap_bytes(
-    lines: tuple[str, ...],
-    *,
-    drop_from_front: bool,
-) -> tuple[tuple[str, ...], bool]:
-    sizes = tuple(len(line.encode("utf-8")) for line in lines)
-    total = sum(sizes)
-    if total <= _FULL_MAX_BYTES:
-        return lines, False
-    if drop_from_front:
-        index = 0
-        running = total
-        while index < len(lines) and running > _FULL_MAX_BYTES:
-            running -= sizes[index]
-            index += 1
-        return lines[index:], True
-    end = 0
-    running = 0
-    while end < len(lines) and running + sizes[end] <= _FULL_MAX_BYTES:
-        running += sizes[end]
-        end += 1
-    return lines[:end], True
-
-
 def _build_page(
     lines: tuple[str, ...],
     request: TimescalingLogRequest,
@@ -148,24 +121,26 @@ def _build_page(
     match mode:
         case LogMode.TAIL:
             if prior_sa is None:
-                start = max(0, len(lines) - _TAIL_LINES)
+                start = max(0, len(lines) - TAIL_LINES)
                 window = lines[start:]
                 next_sa = len(lines)
                 overflow = start > 0
                 drop_front = True
             else:
-                window = lines[prior_sa : prior_sa + _TAIL_LINES]
+                window = lines[prior_sa : prior_sa + TAIL_LINES]
                 next_sa = prior_sa + len(window)
                 overflow = next_sa < len(lines)
                 drop_front = False
         case LogMode.FULL:
             start = 0 if prior_sa is None else prior_sa
-            window = lines[start : start + _FULL_MAX_HITS]
+            window = lines[start : start + FULL_MAX_HITS]
             next_sa = start + len(window)
             overflow = next_sa < len(lines)
             drop_front = False
     redacted = tuple(redact_text(line) for line in window)
-    kept, dropped = _cap_bytes(redacted, drop_from_front=drop_front)
+    kept, dropped = cap_log_bytes(
+        redacted, drop_from_front=drop_front, text_of=str
+    )
     if not kept:
         return LogPage(
             lines=(),
