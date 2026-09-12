@@ -156,7 +156,6 @@ def _device_login(
 
 
 def request_sso(
-    profile: str = AWS_PROFILE,
     *,
     creds_ok: CredsOk | None = None,
     load_portal: LoadPortal | None = None,
@@ -169,7 +168,7 @@ def request_sso(
     send_url: SendUrl | None = None,
 ) -> None:
     """Start SSO login in the background. The helper gets the URL when it is up."""
-    ok = _live_creds_ok(profile) if creds_ok is None else creds_ok()
+    ok = _live_creds_ok(AWS_PROFILE) if creds_ok is None else creds_ok()
     if ok:
         _PENDING.url = None
         _PENDING.helper = False
@@ -189,7 +188,7 @@ def request_sso(
         tell(page)
 
     url, wait = _device_login(
-        profile,
+        AWS_PROFILE,
         load_portal=_live_load_portal if load_portal is None else load_portal,
         oidc=oidc,
         sleep=time.sleep if sleep is None else sleep,

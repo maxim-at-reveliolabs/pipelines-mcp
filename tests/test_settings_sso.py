@@ -18,9 +18,9 @@ _PORTAL: Final = SsoPortal(
 
 @pytest.fixture(autouse=True)
 def reset_pending_login() -> Iterator[None]:
-    request_sso("reveliolabs", creds_ok=lambda: True)
+    request_sso(creds_ok=lambda: True)
     yield
-    request_sso("reveliolabs", creds_ok=lambda: True)
+    request_sso(creds_ok=lambda: True)
 
 
 @dataclass(slots=True)
@@ -90,7 +90,6 @@ def test_request_sso_skips_oidc_when_credentials_work() -> None:
 
     # When: requesting SSO
     request_sso(
-        "reveliolabs",
         creds_ok=lambda: True,
         load_portal=lambda _profile: _PORTAL,
         oidc=oidc,
@@ -121,7 +120,6 @@ def test_request_sso_waits_then_saves_token(
     # When: requesting SSO and running the waiter immediately
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
-            "reveliolabs",
             creds_ok=lambda: False,
             load_portal=lambda _profile: _PORTAL,
             oidc=oidc,
@@ -147,7 +145,6 @@ def test_request_sso_raises_when_profile_portal_missing() -> None:
     # Then: a typed settings error is raised
     with pytest.raises(SettingsError, match="missing"):
         request_sso(
-            "reveliolabs",
             creds_ok=lambda: False,
             load_portal=load_portal,
             oidc=FakeOidc(),
@@ -166,7 +163,6 @@ def test_request_sso_raises_url_and_starts_wait_in_background() -> None:
     # When: requesting SSO for the agent to show the human
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(
-            "reveliolabs",
             creds_ok=lambda: False,
             load_portal=lambda _profile: _PORTAL,
             oidc=oidc,
@@ -188,7 +184,6 @@ def test_request_sso_reuses_url_while_login_still_running() -> None:
     oidc = FakeOidc(pending=0)
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
-            "reveliolabs",
             creds_ok=lambda: False,
             load_portal=lambda _profile: _PORTAL,
             oidc=oidc,
@@ -199,7 +194,7 @@ def test_request_sso_reuses_url_while_login_still_running() -> None:
 
     # When: requesting SSO again
     with pytest.raises(SsoLoginRequiredError) as caught:
-        request_sso("reveliolabs", creds_ok=lambda: False)
+        request_sso(creds_ok=lambda: False)
 
     # Then: the same URL is returned without starting a new login
     assert caught.value.url == _URL
@@ -218,7 +213,6 @@ def test_request_sso_sends_url_to_helper_without_announcing() -> None:
     # When: requesting SSO
     with pytest.raises(SsoLoginRequiredError) as caught:
         request_sso(
-            "reveliolabs",
             creds_ok=lambda: False,
             load_portal=lambda _profile: _PORTAL,
             oidc=oidc,
@@ -240,7 +234,6 @@ def test_request_sso_reuses_helper_handoff_without_url() -> None:
     oidc = FakeOidc(pending=0)
     with pytest.raises(SsoLoginRequiredError):
         request_sso(
-            "reveliolabs",
             creds_ok=lambda: False,
             load_portal=lambda _profile: _PORTAL,
             oidc=oidc,
@@ -252,7 +245,7 @@ def test_request_sso_reuses_helper_handoff_without_url() -> None:
 
     # When: requesting SSO again
     with pytest.raises(SsoLoginRequiredError) as caught:
-        request_sso("reveliolabs", creds_ok=lambda: False)
+        request_sso(creds_ok=lambda: False)
 
     # Then: retry with no login URL
     assert caught.value.helper is True
