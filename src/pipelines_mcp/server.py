@@ -8,7 +8,10 @@ from anyio.to_thread import run_sync
 from mcp.server import MCPServer
 
 from pipelines_mcp.artifacts import list_artifact_files, list_artifacts
-from pipelines_mcp.lifecycle_artifacts import list_lifecycle_artifacts
+from pipelines_mcp.lifecycle_artifacts import (
+    list_lifecycle_artifact_files,
+    list_lifecycle_artifacts,
+)
 from pipelines_mcp.logs import LogRequest, fetch_logs, nonempty
 from pipelines_mcp.models import (
     ArtifactFiles,
@@ -77,6 +80,8 @@ model_output, parquet parts, log dirs).
 list_pipeline_lifecycle_artifacts lists unload folders and shared jsonl
 names. Pass batchtime and the request_id UUID. Rust job artifacts stay
 on list_pipeline_artifacts.
+After list_pipeline_lifecycle_artifacts, pass a folder name to
+list_pipeline_lifecycle_artifact_files to see files inside it.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
 Use the log tools instead.
@@ -424,6 +429,28 @@ async def list_pipeline_lifecycle_artifacts(
         get_object_store(),
         batchtime,
         request_id,
+    )
+
+
+@_tool
+async def list_pipeline_lifecycle_artifact_files(
+    batchtime: str,
+    request_id: str,
+    folder: str,
+) -> ArtifactFiles:
+    """Object keys inside one lifecycle unload folder.
+
+    After list_pipeline_lifecycle_artifacts, pass a folder name to see files
+    inside it. Keys are relative to
+    {batchtime}/rust-unloads/{request_id}/{folder}/. Does not return file
+    contents.
+    """
+    return await run_sync(
+        list_lifecycle_artifact_files,
+        get_object_store(),
+        batchtime,
+        request_id,
+        folder,
     )
 
 

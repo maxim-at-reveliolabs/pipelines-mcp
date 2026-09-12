@@ -31,6 +31,17 @@ def child_folders(store: LogStore, prefix: str) -> tuple[ArtifactFolder, ...]:
     )
 
 
+def child_keys(store: LogStore, prefix: str) -> tuple[str, ...]:
+    """Object keys under prefix, relative to that prefix."""
+    return tuple(
+        sorted(
+            key.removeprefix(prefix)
+            for key in store.list_keys(prefix)
+            if key.startswith(prefix) and key != prefix
+        )
+    )
+
+
 def list_artifacts(
     store: LogStore,
     client: str,
@@ -51,11 +62,4 @@ def list_artifact_files(
 ) -> ArtifactFiles:
     """List object keys under one rust artifact folder."""
     prefix = f"{_job_prefix(client, batchtime, comptype)}{token(folder, 'folder')}/"
-    keys = tuple(
-        sorted(
-            key.removeprefix(prefix)
-            for key in store.list_keys(prefix)
-            if key.startswith(prefix) and key != prefix
-        )
-    )
-    return ArtifactFiles(prefix=prefix, keys=keys)
+    return ArtifactFiles(prefix=prefix, keys=child_keys(store, prefix))

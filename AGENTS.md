@@ -40,6 +40,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 - Artifact folders: `{batchtime}/{client}/{comptype}/` grouped by first child folder
 - Artifact files: `{batchtime}/{client}/{comptype}/{folder}/` keys relative to that prefix
 - Lifecycle unload folders: `{batchtime}/rust-unloads/{request_id}/` grouped by first child folder
+- Lifecycle unload files: `{batchtime}/rust-unloads/{request_id}/{folder}/` keys relative to that prefix
 - Lifecycle jsonl names: `{batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/`
 
 ## Conventions
