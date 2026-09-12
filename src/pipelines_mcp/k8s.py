@@ -80,8 +80,6 @@ def _api[T](read: Callable[[], T]) -> T:
 
     try:
         return read()
-    except K8sApiError:
-        raise
     except ApiException as exc:
         status = exc.status
         if not isinstance(status, int):
