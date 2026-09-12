@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 import time
@@ -293,8 +294,6 @@ def _live_is_pending(exc: BaseException) -> bool:
 
 
 def _live_save_token(key: str, token: dict[str, str | int]) -> None:
-    import hashlib  # noqa: PLC0415  # load on use
-
     from botocore.utils import JSONFileCache  # noqa: PLC0415  # load on use
 
     start_url = str(token["startUrl"])
