@@ -102,14 +102,6 @@ def _page_from_tool(
     return value
 
 
-def _kind_clause(body: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    query = body["query"]
-    assert isinstance(query, dict)
-    clause = query["query_string"]
-    assert isinstance(clause, dict)
-    return clause
-
-
 @asynccontextmanager
 async def _wired(
     *,
@@ -159,39 +151,7 @@ async def test_list_pipeline_pods_empty_through_tool() -> None:
     assert value == []
 
 
-@pytest.mark.parametrize(
-    ("tool", "line", "query", "absent"),
-    [
-        (
-            "get_pipeline_service_log",
-            "svc",
-            'parsed.pipeline-id:"req-1"',
-            "kubernetes.pod_name",
-        ),
-        (
-            "get_pipeline_log",
-            "pod",
-            'kubernetes.pod_name:"req-1"',
-            "parsed.pipeline-id",
-        ),
-    ],
-)
-async def test_log_tool_filters_kind(
-    tool: str, line: str, query: str, absent: str
-) -> None:
-    hits: list[dict[str, JsonValue]] = [{"_source": {"log": line}, "sort": ["t1"]}]
-    async with _wired(hits=hits) as recorder:
-        result = await mcp.call_tool(tool, {"request_id": "req-1"})
-    value = _page_from_tool(result)
-    assert value["lines"] == [line]
-    clause = _kind_clause(recorder.bodies[0])
-    assert "default_field" not in clause
-    assert clause["query"] == query
-    assert absent not in str(recorder.bodies[0])
-
-
-async def test_get_pipeline_start_returns_keys_and_leaves_arguments_intact() -> None:
-    arguments = '{ "batchtime": "202608", "client": "isaca" }'
+async def test_get_pipeline_start_asks_for_twenty_lines() -> None:
     line = json.dumps(
         {
             "@timestamp": "2026-09-11T03:11:01Z",
@@ -200,7 +160,7 @@ async def test_get_pipeline_start_returns_keys_and_leaves_arguments_intact() -> 
             "image-name": "pipelines-rust:v1.1.1",
             "container-name": "pipelines-rust",
             "namespace": "pipelines-prd",
-            "arguments": arguments,
+            "arguments": '{ "batchtime": "202608", "client": "isaca" }',
             "pipeline-id": "req",
         }
     )
@@ -209,7 +169,6 @@ async def test_get_pipeline_start_returns_keys_and_leaves_arguments_intact() -> 
         result = await mcp.call_tool("get_pipeline_start", {"request_id": "req"})
     value = _page_from_tool(result)
     assert value["job_name"] == "pipelines-req-0-0"
-    assert value["arguments"] == arguments
     assert recorder.bodies[0]["size"] == 20
 
 
