@@ -90,7 +90,7 @@ async def _es_log(
     return await fetch_logs(
         get_logs_client(),
         LogRequest(
-            request_id=nonempty(request_id, "request_id"),
+            request_id=request_id,
             log_kind=log_kind,
             cursor=cursor,
             full=full,
