@@ -1,7 +1,5 @@
 """Hand an AWS SSO login URL to the laptop helper over TCP."""
 
-from __future__ import annotations
-
 import socket
 from typing import Final
 from urllib.parse import urlsplit
