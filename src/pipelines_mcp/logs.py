@@ -279,17 +279,15 @@ def nonempty(raw: str, field: str) -> str:
     return stripped
 
 
-def _normalize(request: LogRequest) -> LogRequest:
-    return replace(request, request_id=nonempty(request.request_id, "request_id"))
-
-
 async def fetch_logs(
     client: httpx2.AsyncClient,
     request: LogRequest,
     size: int | None = None,
 ) -> LogPage:
     """Fetch one capped log page from Elasticsearch."""
-    normalized = _normalize(request)
+    normalized = replace(
+        request, request_id=nonempty(request.request_id, "request_id")
+    )
     mode = LogMode.FULL if normalized.full else LogMode.TAIL
     prior_sa: list[str | int | float] | None = None
     if normalized.cursor is not None:
