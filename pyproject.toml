@@ -73,9 +73,6 @@ unfixable = []
 "src/pipelines_mcp/k8s.py" = [
     "D102",     # kubernetes Protocol stubs
 ]
-"src/pipelines_mcp/eks_token.py" = [
-    "D102",     # Protocol stubs
-]
 "src/pipelines_mcp/object_store.py" = [
     "D102",     # Protocol stubs
 ]
