@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Final, Protocol, TypedDict
 
 from pipelines_mcp.errors import SettingsError
-from pipelines_mcp.settings import AWS_PROFILE, AWS_REGION, EKS_CLUSTER
+from pipelines_mcp.settings import AWS_PROFILE, AWS_REGION
 
 if TYPE_CHECKING:
     from boto3.session import Session
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 type Clock = Callable[[], float]
 
+_EKS_CLUSTER: Final = "dev"
 _CLUSTER_ENDPOINT: Final = (
     "https://C9E48999FC8319AC0A1A8EC23AE236FF.gr7.us-east-2.eks.amazonaws.com"
 )
@@ -208,7 +209,7 @@ def eks_auth_from_settings(
         resolved_signer, sts = _sts_signer(session)
     return EksAuth(
         TokenMint(
-            cluster_name=EKS_CLUSTER,
+            cluster_name=_EKS_CLUSTER,
             region=AWS_REGION,
             signer=resolved_signer,
             session=session,
