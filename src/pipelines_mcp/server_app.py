@@ -61,19 +61,12 @@ def set_reauth(reauth: Callable[[], None] | None) -> None:
     _SLOT.reauth = reauth
 
 
-def install_live() -> None:
-    """Install SSO login. Other live clients default inside the getters."""
-    set_reauth(request_sso)
-
-
 def _drop_k8s() -> None:
     _SLOT.k8s = None
 
 
 def _ensure_sso() -> None:
-    reauth = _SLOT.reauth
-    if reauth is None:
-        return
+    reauth = _SLOT.reauth or request_sso
     try:
         reauth()
     except SsoLoginRequiredError:
@@ -129,10 +122,8 @@ async def tool_boundary() -> AsyncGenerator[None]:
         if not sso_auth_expired(exc):
             raise
         _drop_k8s()
-        reauth = _SLOT.reauth
-        if reauth is not None:
-            try:
-                reauth()
-            except SsoLoginRequiredError as sso:
-                raise ToolError(str(sso)) from exc
+        try:
+            _ensure_sso()
+        except SsoLoginRequiredError as sso:
+            raise ToolError(str(sso)) from exc
         raise ToolError(_RETRY_LOGIN) from exc

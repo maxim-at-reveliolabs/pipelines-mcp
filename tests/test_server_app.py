@@ -100,13 +100,13 @@ async def test_get_k8s_rebuilds_after_sso_login_required() -> None:
         return k8s
 
     set_k8s_factory(build)
-    set_reauth(None)
+    set_reauth(lambda: None)
     try:
         first = get_k8s()
         set_reauth(_raise_sso)
         with pytest.raises(SsoLoginRequiredError):
             _ = get_k8s()
-        set_reauth(None)
+        set_reauth(lambda: None)
         second = get_k8s()
         assert first is not second
         assert len(built) == 2

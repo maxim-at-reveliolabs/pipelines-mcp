@@ -25,6 +25,7 @@ from pipelines_mcp.server_app import (
     set_k8s_factory,
     set_logs_factory,
     set_object_store_factory,
+    set_reauth,
 )
 from pipelines_mcp.settings import EsAuth
 
@@ -138,11 +139,13 @@ async def _wired(
     )
     set_logs_factory(lambda: client)
     set_k8s_factory(lambda: k8s)
+    set_reauth(lambda: None)
     try:
         yield recorder
     finally:
         set_logs_factory(None)
         set_k8s_factory(None)
+        set_reauth(None)
         await client.aclose()
 
 
