@@ -144,3 +144,11 @@ class ArtifactListing(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     prefix: str
     folders: tuple[ArtifactFolder, ...]
+
+
+class PipelineConfigCheck(BaseModel):
+    """Result of checking pipeline arguments JSON."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    valid: bool
+    error: str | None = None

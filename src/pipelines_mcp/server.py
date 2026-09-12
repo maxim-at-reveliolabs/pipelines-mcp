@@ -15,11 +15,13 @@ from pipelines_mcp.models import (
     LogKind,
     LogPage,
     ObjectConfig,
+    PipelineConfigCheck,
     PipelineStart,
     PipelineStatus,
     Pod,
     job_name,
 )
+from pipelines_mcp.pipeline_config import check_pipeline_config
 from pipelines_mcp.pipeline_start import parse_start
 from pipelines_mcp.server_app import (
     get_k8s,
@@ -51,10 +53,9 @@ next. Then get_pipeline_log and get_pipeline_service_log.
 search_pipeline_log and search_pipeline_service_log find matching lines
 in those logs. query is required.
 get_pipeline_start returns the keys from the service line that starts the
-job. arguments stays the original JSON string. As part of troubleshooting,
-parse arguments and check that this config JSON is valid and uses the
-latest versions and schema, unless the run intentionally pinned something
-else.
+job. arguments stays the original JSON string. Call validate_pipeline_config
+only on rust job JSON (it has dataset). Do not call it on lifecycle unload
+JSON (no dataset). It does not start a pipeline.
 If the worker says the timescaling cluster failed: get_pipeline_job_config
 (step_index and replica are usually 0) for client, batchtime, and comptype,
 then get_timescaling_log.
@@ -325,3 +326,14 @@ async def list_pipeline_artifacts(
         batchtime,
         comptype,
     )
+
+
+@_tool
+async def validate_pipeline_config(arguments: str) -> PipelineConfigCheck:
+    """Check rust job arguments JSON.
+
+    Pass arguments from a status step that has dataset. Do not pass lifecycle
+    unload JSON. Does not start a pipeline. Bad JSON returns valid false and a
+    short error.
+    """
+    return await run_sync(check_pipeline_config, nonempty(arguments, "arguments"))
