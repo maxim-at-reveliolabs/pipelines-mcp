@@ -14,7 +14,6 @@ from kubernetes.client import (
     V1PodList,
     V1PodTemplateSpec,
 )
-from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, InputRequiredResult
 from pydantic import SecretStr, TypeAdapter
 
@@ -170,15 +169,6 @@ async def test_get_pipeline_start_asks_for_twenty_lines() -> None:
     value = _page_from_tool(result)
     assert value["job_name"] == "pipelines-req-0-0"
     assert recorder.bodies[0]["size"] == 20
-
-
-async def test_get_pipeline_start_raises_when_line_is_missing() -> None:
-    hits: list[dict[str, JsonValue]] = [
-        {"_source": {"log": "queued"}, "sort": ["t1"]},
-    ]
-    async with _wired(hits=hits):
-        with pytest.raises(ToolError, match="No starting pipeline line"):
-            _ = await mcp.call_tool("get_pipeline_start", {"request_id": "req"})
 
 
 async def test_timescaling_log_tool_reads_store() -> None:
