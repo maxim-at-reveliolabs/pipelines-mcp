@@ -164,10 +164,27 @@ def _container_state(state: V1ContainerState | None) -> ContainerState:
 
 def _container(item: V1ContainerStatus) -> ContainerStatus:
     name = "" if item.name is None else item.name
+    raw = item.state
+    state = _container_state(raw)
+    match state:
+        case ContainerState.WAITING:
+            waiting = None if raw is None else raw.waiting
+            reason = None if waiting is None else waiting.reason
+            exit_code = None
+        case ContainerState.RUNNING:
+            reason = None
+            exit_code = None
+        case ContainerState.TERMINATED:
+            terminated = None if raw is None else raw.terminated
+            reason = None if terminated is None else terminated.reason
+            exit_code = None if terminated is None else terminated.exit_code
     return ContainerStatus(
         name=redact_text(name),
-        state=_container_state(item.state),
+        state=state,
         ready=item.ready is True,
+        reason=None if reason is None else redact_text(reason),
+        exit_code=exit_code,
+        restart_count=0 if item.restart_count is None else item.restart_count,
     )
 
 

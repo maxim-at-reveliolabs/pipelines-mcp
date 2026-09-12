@@ -110,6 +110,7 @@ def _pod(
     state: V1ContainerState,
     phase: str = "Running",
     labels: Mapping[str, str] | None = None,
+    restart_count: int = 0,
 ) -> V1Pod:
     return V1Pod(
         metadata=V1ObjectMeta(
@@ -124,7 +125,7 @@ def _pod(
                 V1ContainerStatus(
                     name="main",
                     ready=True,
-                    restart_count=0,
+                    restart_count=restart_count,
                     image="img",
                     image_id="id",
                     state=state,
@@ -221,6 +222,62 @@ def test_container_state_from_pod(
     result = client.get_pod(_POD)
     assert result.container_statuses[0].state is expected
     assert result.phase == phase
+
+
+@pytest.mark.parametrize(
+    ("state", "reason", "exit_code", "restart_count"),
+    [
+        (
+            V1ContainerState(
+                waiting=V1ContainerStateWaiting(reason="ImagePullBackOff")
+            ),
+            "ImagePullBackOff",
+            None,
+            0,
+        ),
+        (
+            V1ContainerState(running=V1ContainerStateRunning()),
+            None,
+            None,
+            0,
+        ),
+        (
+            V1ContainerState(
+                terminated=V1ContainerStateTerminated(
+                    exit_code=137, reason="OOMKilled"
+                )
+            ),
+            "OOMKilled",
+            137,
+            3,
+        ),
+        (
+            V1ContainerState(terminated=V1ContainerStateTerminated(exit_code=0)),
+            None,
+            0,
+            0,
+        ),
+        (
+            V1ContainerState(waiting=V1ContainerStateWaiting(reason=_SECRET)),
+            "[redacted]",
+            None,
+            0,
+        ),
+    ],
+)
+def test_container_reason_exit_code_and_restarts(
+    state: V1ContainerState,
+    reason: str | None,
+    exit_code: int | None,
+    restart_count: int,
+) -> None:
+    client, _batch, _core = _k8s(
+        pods={_POD: _pod(state=state, restart_count=restart_count)}
+    )
+    status = client.get_pod(_POD).container_statuses[0]
+    assert status.reason == reason
+    assert status.exit_code == exit_code
+    assert status.restart_count == restart_count
 
 
 def test_get_pod_job_name_from_labels() -> None:

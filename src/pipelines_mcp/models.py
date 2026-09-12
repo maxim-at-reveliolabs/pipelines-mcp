@@ -64,6 +64,9 @@ class ContainerStatus(BaseModel):
     name: str
     state: ContainerState
     ready: bool
+    reason: str | None
+    exit_code: int | None
+    restart_count: int
 
 
 class Pod(BaseModel):
