@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from http import HTTPStatus
-from os import environ
 from typing import TYPE_CHECKING, Protocol, override
 
 import yaml
@@ -23,7 +22,6 @@ from pipelines_mcp.models import (
     parse_job_name,
 )
 from pipelines_mcp.redact import redact_text
-from pipelines_mcp.settings import AWS_PROFILE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -313,13 +311,17 @@ class K8s:
 
 
 def live_k8s() -> K8s:
-    """Build a live cluster client from local kube config."""
+    """Build a live cluster client from in-process EKS auth."""
     from kubernetes.client import (  # noqa: PLC0415  # load on use
+        ApiClient,
         BatchV1Api,
+        Configuration,
         CoreV1Api,
     )
-    from kubernetes.config import new_client_from_config  # noqa: PLC0415  # load on use
 
-    environ["AWS_PROFILE"] = AWS_PROFILE
-    api_client = new_client_from_config(persist_config=False)
+    from pipelines_mcp.eks_token import eks_auth_from_settings  # noqa: PLC0415
+
+    config = Configuration()
+    eks_auth_from_settings().bind(config)
+    api_client = ApiClient(configuration=config)
     return K8s(batch=BatchV1Api(api_client), core=CoreV1Api(api_client))

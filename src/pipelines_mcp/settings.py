@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 AWS_REGION: Final = "us-east-2"
 AWS_PROFILE: Final = "reveliolabs"
+EKS_CLUSTER: Final = "dev"
 
 type SecretReader = Callable[[str], str]
 

@@ -14,6 +14,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | Start line keys | `pipeline_start.py` |
 | Timescaling logs | `timescaling_logs.py`, `object_store.py` |
 | SSO device login | `settings_sso.py`, `sso_url.py` |
+| EKS token | `eks_token.py` |
 | ES auth | `settings.py` |
 | Process wiring | `__main__.py`, `server_app.py` |
 | DTOs | `models.py` |
@@ -25,7 +26,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 
 - AWS profile `reveliolabs`, region `us-east-2`
 - EKS cluster `dev`, namespace `pipelines-prd`
-- Live cluster client uses local kube config.
+- Cluster client: baked-in EKS endpoint and CA; token minted in process after SSO.
 - ES secret `elasticsearch/elastic`
 - Job name `pipelines-{request_id}-{step_index}-{replica}`
 - Timescaling logs: `{batchtime}/{client}/{comptype}/timescaling/logs/`, else `{batchtime}/logs/{client}_{batchtime}_{comptype}_replica_0/`, else without `_replica_0`
