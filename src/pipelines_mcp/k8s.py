@@ -74,12 +74,16 @@ class CoreApi(Protocol):
 
 def _api[T](read: Callable[[], T]) -> T:
     """Run a cluster call. HTTP errors become K8sApiError."""
+    from kubernetes.client.exceptions import (  # noqa: PLC0415  # load on use
+        ApiException,
+    )
+
     try:
         return read()
     except K8sApiError:
         raise
-    except Exception as exc:
-        status = getattr(exc, "status", None)
+    except ApiException as exc:
+        status = exc.status
         if not isinstance(status, int):
             raise
         raise K8sApiError(status=status) from exc
