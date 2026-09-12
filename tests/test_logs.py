@@ -157,7 +157,7 @@ async def test_empty_hits_returns_cursor_string() -> None:
     request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE)
 
     # When: the page is fetched
-    page, bodies, urls = await _fetch(request, [])
+    page, bodies, _urls = await _fetch(request, [])
 
     # Then: lines are empty, truncated is false, and cursor is still a string
     assert page.lines == ()
@@ -167,8 +167,6 @@ async def test_empty_hits_returns_cursor_string() -> None:
     assert isinstance(page.cursor, str)
     assert page.cursor != ""
     _assert_search(bodies[0], order="desc", size=100)
-    assert urls
-    assert all("scroll" not in url for url in urls)
 
 
 async def test_invalid_cursor_raises() -> None:

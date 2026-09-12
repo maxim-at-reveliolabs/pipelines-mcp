@@ -119,15 +119,9 @@ async def _wired(
     recorder = Recorder(bodies=[])
 
     def handler(http_request: httpx2.Request) -> httpx2.Response:
-        if http_request.method == "DELETE":
-            return httpx2.Response(200, json={"succeeded": True})
-        if "/_search/scroll" in str(http_request.url):
-            return httpx2.Response(200, json={"_scroll_id": "s1", "hits": {"hits": []}})
         recorder.bodies.append(_JSON_OBJECT.validate_json(http_request.content))
         payload = [] if hits is None else hits
-        return httpx2.Response(
-            200, json={"_scroll_id": "s1", "hits": {"hits": payload}}
-        )
+        return httpx2.Response(200, json={"hits": {"hits": payload}})
 
     client = create_async_client(
         auth=EsAuth(username="u", password=SecretStr("p")),
