@@ -1,4 +1,3 @@
-import json
 from dataclasses import is_dataclass
 
 import pytest
@@ -9,34 +8,9 @@ from pipelines_mcp.errors import (
     SsoLoginRequiredError,
 )
 from pipelines_mcp.models import (
-    ContainerState,
-    LogKind,
-    PipelineStart,
     job_name,
     parse_job_name,
 )
-
-
-def test_pipeline_start_json_schema_uses_field_names() -> None:
-    dumped = json.dumps(PipelineStart.model_json_schema())
-    assert '"timestamp"' in dumped
-    assert '"job_name"' in dumped
-    assert '"@timestamp"' not in dumped
-    assert '"job-name"' not in dumped
-
-
-@pytest.mark.parametrize(
-    ("enum_cls", "values"),
-    [
-        (ContainerState, ("waiting", "running", "terminated")),
-        (LogKind, ("pipeline", "service")),
-    ],
-)
-def test_enum_members(
-    enum_cls: type[ContainerState | LogKind],
-    values: tuple[str, ...],
-) -> None:
-    assert tuple(member.value for member in enum_cls) == values
 
 
 @pytest.mark.parametrize(

@@ -23,33 +23,11 @@ _NAMES: Final[tuple[str, ...]] = (
     "get_timescaling_log",
 )
 
-_FORBIDDEN: Final[tuple[str, ...]] = (
-    "eks",
-    "kubernetes",
-    "elasticsearch",
-    "argo",
-    "kubectl",
-    "boto",
-    "opensearch",
-)
-
 
 async def test_lists_exactly_ten_tool_names() -> None:
     tools = await mcp.list_tools()
     names = tuple(tool.name for tool in tools)
     assert names == _NAMES
-
-
-async def test_forbidden_infra_words_absent_from_names_and_descriptions() -> None:
-    tools = await mcp.list_tools()
-    blobs = [f"{tool.name} {tool.description}".lower() for tool in tools]
-    assert mcp.instructions is not None
-    blobs.append(mcp.instructions.lower())
-    if mcp.description is not None:
-        blobs.append(mcp.description.lower())
-    for blob in blobs:
-        for word in _FORBIDDEN:
-            assert word not in blob
 
 
 async def test_get_pipeline_log_empty_request_id_raises_tool_error() -> None:

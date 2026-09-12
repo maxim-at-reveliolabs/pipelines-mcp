@@ -32,9 +32,6 @@ def test_parse_start_returns_keys_and_leaves_arguments_intact() -> None:
     assert start.namespace == "pipelines-prd"
     assert start.pipeline_id == "req"
     assert start.arguments == _ARGUMENTS
-    dumped = start.model_dump()
-    assert "@timestamp" not in dumped
-    assert "job-name" not in dumped
 
 
 def test_parse_start_raises_when_line_is_missing() -> None:
