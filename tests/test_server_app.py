@@ -3,6 +3,7 @@ from typing import NoReturn
 
 import httpx2
 import pytest
+from botocore.exceptions import SSOTokenLoadError
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import SecretStr
 
@@ -47,10 +48,6 @@ class _Core:
     def read_namespaced_pod(self, name: str, namespace: str) -> NoReturn:
         _ = name, namespace
         raise K8sApiError(status=404)
-
-
-class SSOTokenLoadError(Exception):
-    pass
 
 
 def _client() -> httpx2.AsyncClient:
@@ -151,7 +148,7 @@ async def test_tool_boundary_expired_token_returns_login_url() -> None:
         # When: that error crosses the tool boundary
         with pytest.raises(ToolError, match="ZZZZ-YYYY") as caught:
             async with tool_boundary():
-                raise SSOTokenLoadError
+                raise SSOTokenLoadError(error_msg="dead")
     finally:
         set_reauth(None)
 

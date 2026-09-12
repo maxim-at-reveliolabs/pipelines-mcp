@@ -1,8 +1,9 @@
 """AWS IAM Identity Center device login. Hands the URL to the local helper."""
 
+# pyright: reportUnknownMemberType=false
+
 from __future__ import annotations
 
-import importlib
 import logging
 import threading
 import time
@@ -10,14 +11,14 @@ from collections.abc import Callable, Mapping
 from configparser import ConfigParser
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypeIs
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from types_boto3_sso_oidc.client import SSOOIDCClient
 
 from pipelines_mcp.errors import SettingsError, SsoLoginRequiredError
 from pipelines_mcp.settings import AWS_PROFILE
 from pipelines_mcp.sso_url import send_sso_url
-
-if TYPE_CHECKING:
-    from types import ModuleType
 
 type Sleep = Callable[[float], None]
 type Announce = Callable[[str], None]
@@ -60,18 +61,14 @@ class SsoOidc(Protocol):
         clientName: str,
         clientType: str,
         scopes: list[str],
-    ) -> JsonMap:
-        """Register a public OIDC client."""
-        ...
+    ) -> JsonMap: ...
 
     def start_device_authorization(
         self,
         clientId: str,
         clientSecret: str,
         startUrl: str,
-    ) -> JsonMap:
-        """Start a device authorization."""
-        ...
+    ) -> JsonMap: ...
 
     def create_token(
         self,
@@ -79,9 +76,7 @@ class SsoOidc(Protocol):
         clientSecret: str,
         grantType: str,
         deviceCode: str,
-    ) -> JsonMap:
-        """Exchange a device code for an access token."""
-        ...
+    ) -> JsonMap: ...
 
 
 def _default_spawn(work: Callable[[], None]) -> None:
@@ -99,7 +94,9 @@ def _device_login(
     is_pending: IsPending,
 ) -> tuple[str, Callable[[], None]]:
     portal = load_portal(profile)
-    client = _live_oidc(portal.region) if oidc is None else oidc
+    client: SsoOidc | SSOOIDCClient = (
+        oidc if oidc is not None else _live_oidc(portal.region)
+    )
     registered = client.register_client(
         clientName="pipelines-mcp",
         clientType="public",
@@ -118,7 +115,7 @@ def _device_login(
         interval = float(device.get("interval", 5))
         wait_seconds = 5 * 60
         deadline = time.monotonic() + wait_seconds
-        token: JsonMap | None = None
+        token = None
         while token is None:
             try:
                 token = client.create_token(
@@ -218,71 +215,42 @@ def _iso_utc(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
-class _AwsHandle(Protocol):
-    """Opaque AWS SDK value."""
-
-
-class _CredSession(Protocol):
-    def get_credentials(self) -> _AwsHandle | None:
-        """Return cached AWS credentials if any."""
-        ...
-
-
-class _Boto3Mod(Protocol):
-    def Session(self, profile_name: str) -> _CredSession:
-        """Build a profile session."""
-        ...
-
-    def client(
-        self, service_name: str, region_name: str, config: _AwsHandle
-    ) -> SsoOidc:
-        """Build a service client."""
-        ...
-
-
-def _is_boto3(module: ModuleType | _Boto3Mod) -> TypeIs[_Boto3Mod]:
-    return hasattr(module, "Session") and hasattr(module, "client")
-
-
 def sso_auth_expired(exc: BaseException) -> bool:
     """True when boto3 failed because the SSO token is missing or dead."""
-    match type(exc).__name__:
-        case "UnauthorizedSSOTokenError" | "TokenRetrievalError" | "SSOTokenLoadError":
+    from botocore.exceptions import (  # noqa: PLC0415  # load on use
+        SSOTokenLoadError,
+        TokenRetrievalError,
+        UnauthorizedSSOTokenError,
+    )
+
+    match exc:
+        case UnauthorizedSSOTokenError() | TokenRetrievalError() | SSOTokenLoadError():
             return True
         case _:
             return False
 
 
-def _credentials_ready(credentials: _AwsHandle | None) -> bool:
+def _live_creds_ok(profile: str) -> bool:
+    import boto3  # noqa: PLC0415  # load on use
+    from botocore.exceptions import ProfileNotFound  # noqa: PLC0415  # load on use
+
+    try:
+        credentials = boto3.Session(profile_name=profile).get_credentials()
+    except ProfileNotFound as exc:
+        raise SettingsError(reason=f"AWS profile {profile} is missing") from exc
+    except Exception as exc:  # boto3 SSO errors are not a stable type
+        if sso_auth_expired(exc):
+            return False
+        raise
     if credentials is None:
         return False
-    freeze = getattr(credentials, "get_frozen_credentials", None)
-    if not callable(freeze):
-        return True
     try:
-        _ = freeze()
+        _ = credentials.get_frozen_credentials()
     except Exception as exc:  # boto3 SSO errors are not a stable type
         if sso_auth_expired(exc):
             return False
         raise
     return True
-
-
-def _live_creds_ok(profile: str) -> bool:
-    module = importlib.import_module("boto3")
-    if not _is_boto3(module):
-        raise SettingsError(reason="boto3 Session is missing")
-    try:
-        credentials = module.Session(profile_name=profile).get_credentials()
-    except Exception as exc:  # boto3 SSO errors are not a stable type
-        match type(exc).__name__:
-            case "ProfileNotFound":
-                raise SettingsError(reason=f"AWS profile {profile} is missing") from exc
-            case _:
-                if sso_auth_expired(exc):
-                    return False
-                raise
-    return _credentials_ready(credentials)
 
 
 def _live_load_portal(profile: str) -> SsoPortal:
@@ -310,21 +278,16 @@ def _live_load_portal(profile: str) -> SsoPortal:
     return SsoPortal(start_url=start, region=region, session_name=None)
 
 
-def _live_oidc(region: str) -> SsoOidc:
-    boto3 = importlib.import_module("boto3")
-    botocore = importlib.import_module("botocore")
-    config_mod = importlib.import_module("botocore.config")
-    if not _is_boto3(boto3):
-        raise SettingsError(reason="boto3 client is missing")
-    unsigned = getattr(botocore, "UNSIGNED", None)
-    config_cls = getattr(config_mod, "Config", None)
-    if unsigned is None or not callable(config_cls):
-        raise SettingsError(reason="botocore Config is missing")
-    return boto3.client(
+def _live_oidc(region: str) -> SSOOIDCClient:
+    import boto3  # noqa: PLC0415  # load on use
+    from botocore.config import Config  # noqa: PLC0415  # load on use
+
+    client: SSOOIDCClient = boto3.client(
         "sso-oidc",
         region_name=region,
-        config=config_cls(signature_version=unsigned),
+        config=Config(signature_version="unsigned"),
     )
+    return client
 
 
 def _live_is_pending(exc: BaseException) -> bool:
@@ -333,15 +296,15 @@ def _live_is_pending(exc: BaseException) -> bool:
 
 
 def _live_save_token(key: str, token: dict[str, str | int]) -> None:
-    utils = importlib.import_module("botocore.utils")
-    cache_cls = getattr(utils, "JSONFileCache", None)
-    loader_cls = getattr(utils, "SSOTokenLoader", None)
-    if not callable(cache_cls) or not callable(loader_cls):
-        raise SettingsError(reason="SSO token cache is missing")
+    import hashlib  # noqa: PLC0415  # load on use
+
+    from botocore.utils import JSONFileCache  # noqa: PLC0415  # load on use
+
     start_url = str(token["startUrl"])
     session_name = key if key != start_url else None
-    loaded = loader_cls(cache=cache_cls(str(Path.home() / ".aws" / "sso" / "cache")))
-    save = getattr(loaded, "save_token", None)
-    if not callable(save):
-        raise SettingsError(reason="SSO token cache is missing")
-    _ = save(start_url, token, session_name=session_name)
+    material = start_url if session_name is None else session_name
+    cache_key = hashlib.sha1(
+        material.encode("utf-8"), usedforsecurity=False
+    ).hexdigest()
+    cache = JSONFileCache(str(Path.home() / ".aws" / "sso" / "cache"))
+    cache[cache_key] = token

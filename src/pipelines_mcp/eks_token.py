@@ -1,9 +1,10 @@
 """EKS bearer token via botocore RequestSigner. No AWS CLI."""
 
+# pyright: reportUnknownMemberType=false
+
 from __future__ import annotations
 
 import base64
-import importlib
 import tempfile
 import time
 from collections.abc import Callable
@@ -22,7 +23,8 @@ from typing import (
 from pipelines_mcp.settings import AWS_PROFILE, AWS_REGION
 
 if TYPE_CHECKING:
-    from types import ModuleType
+    from boto3.session import Session
+    from types_boto3_sts.client import STSClient
 
 type Clock = Callable[[], float]
 
@@ -47,9 +49,7 @@ class PresignSigner(Protocol):
         expires_in: int = 3600,
         region_name: str | None = None,
         signing_name: str | None = None,
-    ) -> str:
-        """Return the presigned URL."""
-        ...
+    ) -> str: ...
 
 
 class KubeClientConfig(Protocol):
@@ -59,7 +59,7 @@ class KubeClientConfig(Protocol):
     api_key: dict[str, str]
     api_key_prefix: dict[str, str]
     ssl_ca_cert: str | None
-    refresh_api_key_hook: Callable[..., None] | None
+    refresh_api_key_hook: Callable[[KubeClientConfig], None] | None
 
 
 class KubeClientConfigWithCaData(KubeClientConfig, Protocol):
@@ -83,8 +83,9 @@ class TokenMint:
     cluster_name: str
     region: str
     signer: PresignSigner
-    # botocore RequestSigner weakrefs the STS client; keep session+client alive.
-    keep_alive: _AwsSession | tuple[_AwsSession, _AwsClient] | None = None
+    # botocore RequestSigner weakrefs the STS client; keep session and client alive.
+    session: Session | None = None
+    sts: STSClient | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,18 +184,19 @@ def eks_auth_from_settings(
     """Build EksAuth from a cluster and optional signer."""
     cluster_name = "dev"
     resolved_clock = time.monotonic if clock is None else clock
-    keep_alive: _AwsSession | tuple[_AwsSession, _AwsClient] | None = None
     resolved_signer = signer
+    session: Session | None = None
+    sts: STSClient | None = None
     if resolved_signer is None:
         session = _boto_session()
         resolved_signer, sts = _sts_signer(session)
-        keep_alive = (session, sts)
     return EksAuth(
         TokenMint(
             cluster_name=cluster_name,
             region=AWS_REGION,
             signer=resolved_signer,
-            keep_alive=keep_alive,
+            session=session,
+            sts=sts,
         ),
         cluster,
         resolved_clock,
@@ -205,65 +207,20 @@ def _has_ca_cert_data(config: KubeClientConfig) -> TypeIs[KubeClientConfigWithCa
     return hasattr(config, "ca_cert_data")
 
 
-class _AwsHandle(Protocol):
-    """Opaque AWS SDK object parsed at the import boundary."""
+def _boto_session() -> Session:
+    import boto3  # noqa: PLC0415  # load on use
+
+    return boto3.Session(region_name=AWS_REGION, profile_name=AWS_PROFILE)
 
 
-class _AwsServiceModel(Protocol):
-    service_id: _AwsHandle
+def _sts_signer(session: Session) -> tuple[PresignSigner, STSClient]:
+    from botocore.signers import RequestSigner  # noqa: PLC0415  # load on use
 
-
-class _AwsMeta(Protocol):
-    service_model: _AwsServiceModel
-    events: _AwsHandle
-
-
-class _AwsClient(Protocol):
-    meta: _AwsMeta
-
-
-class _AwsSession(Protocol):
-    def get_credentials(self) -> _AwsHandle | None: ...
-
-    def client(
-        self,
-        service_name: str,
-        region_name: str | None = None,
-    ) -> _AwsClient: ...
-
-
-class _Boto3Module(Protocol):
-    Session: Callable[..., _AwsSession]
-
-
-class _SignersModule(Protocol):
-    RequestSigner: Callable[..., PresignSigner]
-
-
-def _is_boto3(module: ModuleType | _Boto3Module) -> TypeIs[_Boto3Module]:
-    return hasattr(module, "Session")
-
-
-def _is_signers(module: ModuleType | _SignersModule) -> TypeIs[_SignersModule]:
-    return hasattr(module, "RequestSigner")
-
-
-def _boto_session() -> _AwsSession:
-    module = importlib.import_module("boto3")
-    if not _is_boto3(module):
-        raise EksAuthError(reason="boto3 Session is missing")
-    return module.Session(region_name=AWS_REGION, profile_name=AWS_PROFILE)
-
-
-def _sts_signer(session: _AwsSession) -> tuple[PresignSigner, _AwsClient]:
     credentials = session.get_credentials()
     if credentials is None:
         raise EksAuthError(reason="AWS credentials are missing")
-    module = importlib.import_module("botocore.signers")
-    if not _is_signers(module):
-        raise EksAuthError(reason="botocore RequestSigner is missing")
-    sts = session.client("sts", region_name=AWS_REGION)
-    signer = module.RequestSigner(
+    sts: STSClient = session.client("sts", region_name=AWS_REGION)
+    signer = RequestSigner(
         sts.meta.service_model.service_id,
         AWS_REGION,
         "sts",

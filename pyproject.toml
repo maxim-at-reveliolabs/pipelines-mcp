@@ -27,6 +27,7 @@ dev = [
     "basedpyright>=1.21",
     "ruff>=0.8",
     "pytest>=8",
+    "types-boto3[s3,secretsmanager,sso-oidc,sts]>=1.43.93",
 ]
 
 [tool.basedpyright]
@@ -72,17 +73,16 @@ unfixable = []
 "src/pipelines_mcp/k8s.py" = [
     "D102",     # kubernetes Protocol stubs
 ]
-"src/pipelines_mcp/settings.py" = [
-    "N803",     # boto3 Secrets Manager argument names
+"src/pipelines_mcp/eks_token.py" = [
+    "D102",     # Protocol stubs
 ]
 "src/pipelines_mcp/object_store.py" = [
-    "N803",     # boto3 S3 argument names
     "D102",     # Protocol stubs
 ]
 "src/pipelines_mcp/settings_sso.py" = [
-    "N802",     # boto3 Session factory name
     "N803",     # boto3 SSO argument names
     "PLR0913",  # injected SSO test seams
+    "D102",     # Protocol stubs
 ]
 "tests/**/*.py" = [
     "S101",
