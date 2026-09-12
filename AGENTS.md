@@ -13,6 +13,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | Logs | `logs.py` |
 | Pipeline service status | `pipeline_status.py` |
 | Pipeline service queue | `pipeline_queue.py` |
+| Image versions | `pipeline_images.py` |
 | Per-step run status | `pipeline_step_status.py` |
 | Start line keys | `pipeline_start.py` |
 | Config JSON check | `pipeline_config.py` |
@@ -26,7 +27,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 | DTOs | `models.py` |
 | Output scrub | `redact.py` |
 
-`server.py` defines tools and must not call `run()`. Log, cluster, object-store, status, queue, and SSO default inside the getters. Then `mcp.run()`.
+`server.py` defines tools and must not call `run()`. Log, cluster, object-store, status, queue, images, and SSO default inside the getters. Then `mcp.run()`.
 
 ## Live targets (baked in)
 

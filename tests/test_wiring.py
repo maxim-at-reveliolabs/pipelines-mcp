@@ -20,9 +20,16 @@ from pydantic import SecretStr, TypeAdapter
 
 from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import JsonValue, create_logs_client
-from pipelines_mcp.models import PipelineQueueItem, PipelineStatus, PipelineStep
+from pipelines_mcp.models import (
+    PipelineImage,
+    PipelineImages,
+    PipelineQueueItem,
+    PipelineStatus,
+    PipelineStep,
+)
 from pipelines_mcp.server import mcp
 from pipelines_mcp.server_app import (
+    set_images_store_factory,
     set_k8s_factory,
     set_logs_factory,
     set_object_store_factory,
@@ -132,8 +139,38 @@ async def _wired(
         set_k8s_factory(None)
         set_status_store_factory(None)
         set_queue_store_factory(None)
+        set_images_store_factory(None)
         set_sso(None)
         await client.aclose()
+
+
+async def test_get_pipeline_images_through_tool() -> None:
+    payload = PipelineImages(
+        rust=PipelineImage(
+            name="pipelines-rust",
+            image="pipelines-rust",
+            version="v1.2.3",
+        ),
+        lifecycle=PipelineImage(
+            name="pipelines-rust-lifecycle",
+            image="pipelines-rust-lifecycle",
+            version="v9.9.9",
+        ),
+    )
+
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def get(self) -> PipelineImages:
+            return payload
+
+    set_images_store_factory(Store)
+    try:
+        async with _wired():
+            result = await mcp.call_tool("get_pipeline_images", {})
+    finally:
+        set_images_store_factory(None)
+    value = _tool_json(result)
+    assert value == payload.model_dump()
 
 
 async def test_get_pipeline_queue_through_tool() -> None:

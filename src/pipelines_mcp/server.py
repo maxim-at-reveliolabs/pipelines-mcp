@@ -28,6 +28,7 @@ from pipelines_mcp.models import (
     LogPage,
     ObjectConfig,
     PipelineConfigCheck,
+    PipelineImages,
     PipelineQueueItem,
     PipelineStart,
     PipelineStatus,
@@ -39,6 +40,7 @@ from pipelines_mcp.pipeline_config import check_pipeline_config
 from pipelines_mcp.pipeline_start import parse_start
 from pipelines_mcp.pipeline_step_status import parse_step_status
 from pipelines_mcp.server_app import (
+    get_images_store,
     get_k8s,
     get_logs_client,
     get_object_store,
@@ -70,6 +72,8 @@ Overall status stays on get_pipeline_status. Then get_pipeline_log
 and get_pipeline_service_log.
 When get_pipeline_status is pending and there is no cluster job, call
 get_pipeline_queue to see if the run is waiting in the queue.
+get_pipeline_images returns current rust and lifecycle image versions
+from pipeline service metadata. It does not start a pipeline.
 When a run has many steps, use get_pipeline_step_log instead of mixed
 get_pipeline_log.
 search_pipeline_log and search_pipeline_service_log find matching lines
@@ -192,6 +196,15 @@ async def get_pipeline_queue() -> tuple[PipelineQueueItem, ...]:
     Empty when nothing is waiting.
     """
     return await run_sync(get_queue_store().get)
+
+
+@_tool
+async def get_pipeline_images() -> PipelineImages:
+    """Current rust and lifecycle image versions from pipeline service metadata.
+
+    Does not start a pipeline.
+    """
+    return await run_sync(get_images_store().get)
 
 
 @_tool

@@ -142,6 +142,23 @@ class PipelineQueueItem(BaseModel):
     queue_tag: str
 
 
+class PipelineImage(BaseModel):
+    """One pipeline service image version."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    name: str
+    image: str
+    version: str
+
+
+class PipelineImages(BaseModel):
+    """Current rust and lifecycle image versions."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    rust: PipelineImage
+    lifecycle: PipelineImage | None = None
+
+
 class PipelineStepRun(BaseModel):
     """One DAG step replica and its run status."""
 
