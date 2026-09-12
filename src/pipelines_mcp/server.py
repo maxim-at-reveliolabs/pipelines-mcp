@@ -1,5 +1,8 @@
 """MCP server with the read-only pipeline tools. Does not call run()."""
 
+from collections.abc import Awaitable, Callable
+from functools import wraps
+
 from mcp.server import MCPServer
 
 from pipelines_mcp.errors import EmptyQueryError
@@ -66,6 +69,23 @@ same request. Do not ask the human to open a URL unless the tool returned one.
 )
 
 
+def _tool[**P, R](
+    *,
+    description: str,
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
+    """Register a tool and map domain errors."""
+
+    def register(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+        @wraps(fn)
+        async def bound(*args: P.args, **kwargs: P.kwargs) -> R:
+            async with tool_boundary():
+                return await fn(*args, **kwargs)
+
+        return mcp.tool(description=description)(bound)
+
+    return register
+
+
 def _nonempty(raw: str, field: str) -> str:
     stripped = raw.strip()
     if stripped == "":
@@ -81,7 +101,7 @@ def _job_name(request_id: str, step_index: int, replica: int) -> JobName:
     )
 
 
-@mcp.tool(
+@_tool(
     description=(
         "List currently running or recent jobs. Do not use this when the user "
         "gave a request_id UUID, GitHub URL, or Jenkins run; fetch the CI log "
@@ -97,23 +117,20 @@ async def list_pipeline_jobs(
     limit: int = 50,
 ) -> tuple[Job, ...]:
     """List jobs with optional status and request filters."""
-    async with tool_boundary():
-        stripped_id = "" if request_id is None else request_id.strip()
-        prefix = None if stripped_id == "" else f"pipelines-{stripped_id}"
-        stripped_status = "" if status is None else status.strip()
-        status_filter = (
-            "Active"
-            if stripped_status.lower() == "running"
-            else stripped_status or None
-        )
-        return await get_k8s().list_jobs(
-            status_filter,
-            prefix,
-            min(100, max(1, limit)),
-        )
+    stripped_id = "" if request_id is None else request_id.strip()
+    prefix = None if stripped_id == "" else f"pipelines-{stripped_id}"
+    stripped_status = "" if status is None else status.strip()
+    status_filter = (
+        "Active" if stripped_status.lower() == "running" else stripped_status or None
+    )
+    return await get_k8s().list_jobs(
+        status_filter,
+        prefix,
+        min(100, max(1, limit)),
+    )
 
 
-@mcp.tool(
+@_tool(
     description=(
         "Get one job by request_id UUID, step_index, and replica (usually 0). "
         "Use only if you need job status; start with get_pipeline_log. "
@@ -122,11 +139,10 @@ async def list_pipeline_jobs(
 )
 async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Job:
     """Get one job by request, step, and replica."""
-    async with tool_boundary():
-        return await get_k8s().get_job(_job_name(request_id, step_index, replica))
+    return await get_k8s().get_job(_job_name(request_id, step_index, replica))
 
 
-@mcp.tool(
+@_tool(
     description=(
         "List live pods for one job. Empty if they are already gone. Use for "
         "pod state; use log tools for the failure reason."
@@ -136,11 +152,10 @@ async def list_pipeline_pods(
     request_id: str, step_index: int, replica: int
 ) -> tuple[Pod, ...]:
     """List pods for one job."""
-    async with tool_boundary():
-        return await get_k8s().list_pods(_job_name(request_id, step_index, replica))
+    return await get_k8s().list_pods(_job_name(request_id, step_index, replica))
 
 
-@mcp.tool(
+@_tool(
     description=(
         "Full YAML for one job by request_id, step_index, and replica. "
         "Secrets are redacted. Use to read client, batchtime, and comptype "
@@ -151,25 +166,22 @@ async def get_pipeline_job_config(
     request_id: str, step_index: int, replica: int
 ) -> ObjectConfig:
     """Get the full redacted config for one job."""
-    async with tool_boundary():
-        return await get_k8s().job_config(_job_name(request_id, step_index, replica))
+    return await get_k8s().job_config(_job_name(request_id, step_index, replica))
 
 
-@mcp.tool(description="Get one pod by pod_name from list_pipeline_pods.")
+@_tool(description="Get one pod by pod_name from list_pipeline_pods.")
 async def get_pipeline_pod(pod_name: str) -> Pod:
     """Get one pod by name."""
-    async with tool_boundary():
-        return await get_k8s().get_pod(PodName(_nonempty(pod_name, "pod_name")))
+    return await get_k8s().get_pod(PodName(_nonempty(pod_name, "pod_name")))
 
 
-@mcp.tool(description="Full YAML for one pod by pod_name. Secrets are redacted.")
+@_tool(description="Full YAML for one pod by pod_name. Secrets are redacted.")
 async def get_pipeline_pod_config(pod_name: str) -> ObjectConfig:
     """Get the full redacted config for one pod."""
-    async with tool_boundary():
-        return await get_k8s().pod_config(PodName(_nonempty(pod_name, "pod_name")))
+    return await get_k8s().pod_config(PodName(_nonempty(pod_name, "pod_name")))
 
 
-@mcp.tool(
+@_tool(
     description=(
         "Worker logs for a request_id UUID. Empty until the worker is running. "
         "Default is the last 100 lines plus a cursor. Pass cursor to get only "
@@ -183,19 +195,18 @@ async def get_pipeline_log(
     full: bool = False,
 ) -> LogPage:
     """Read pipeline logs for a request."""
-    async with tool_boundary():
-        return await fetch_logs(
-            get_logs_client(),
-            LogRequest(
-                request_id=request_id,
-                log_kind=LogKind.PIPELINE,
-                cursor=cursor,
-                full=full,
-            ),
-        )
+    return await fetch_logs(
+        get_logs_client(),
+        LogRequest(
+            request_id=request_id,
+            log_kind=LogKind.PIPELINE,
+            cursor=cursor,
+            full=full,
+        ),
+    )
 
 
-@mcp.tool(
+@_tool(
     description=(
         "Service logs for the same request_id UUID. Use with worker logs. "
         "Same cursor rules as get_pipeline_log."
@@ -208,19 +219,18 @@ async def get_pipeline_service_log(
     full: bool = False,
 ) -> LogPage:
     """Read service logs for a request."""
-    async with tool_boundary():
-        return await fetch_logs(
-            get_logs_client(),
-            LogRequest(
-                request_id=request_id,
-                log_kind=LogKind.SERVICE,
-                cursor=cursor,
-                full=full,
-            ),
-        )
+    return await fetch_logs(
+        get_logs_client(),
+        LogRequest(
+            request_id=request_id,
+            log_kind=LogKind.SERVICE,
+            cursor=cursor,
+            full=full,
+        ),
+    )
 
 
-@mcp.tool(
+@_tool(
     description=(
         "Keys from the service line that starts the job for a request_id UUID. "
         "arguments stays the original JSON string. Use when the job is gone "
@@ -229,20 +239,19 @@ async def get_pipeline_service_log(
 )
 async def get_pipeline_start(request_id: str) -> PipelineStart:
     """Read start-line keys for a request."""
-    async with tool_boundary():
-        page = await fetch_logs(
-            get_logs_client(),
-            LogRequest(
-                request_id=request_id,
-                log_kind=LogKind.SERVICE,
-                full=True,
-                size=20,
-            ),
-        )
-        return parse_start(page.lines)
+    page = await fetch_logs(
+        get_logs_client(),
+        LogRequest(
+            request_id=request_id,
+            log_kind=LogKind.SERVICE,
+            full=True,
+            size=20,
+        ),
+    )
+    return parse_start(page.lines)
 
 
-@mcp.tool(
+@_tool(
     description=(
         "Timescaling model logs. Use only when worker logs say the cluster "
         "failed. Pass client, batchtime, and comptype from "
@@ -259,14 +268,13 @@ async def get_timescaling_log(
     full: bool = False,
 ) -> LogPage:
     """Read timescaling model logs for a run."""
-    async with tool_boundary():
-        return await fetch_timescaling_logs(
-            get_object_store(),
-            TimescalingLogRequest(
-                client=client,
-                batchtime=batchtime,
-                comptype=comptype,
-                cursor=cursor,
-                full=full,
-            ),
-        )
+    return await fetch_timescaling_logs(
+        get_object_store(),
+        TimescalingLogRequest(
+            client=client,
+            batchtime=batchtime,
+            comptype=comptype,
+            cursor=cursor,
+            full=full,
+        ),
+    )
