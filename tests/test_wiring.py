@@ -213,6 +213,33 @@ async def test_get_pipeline_start_asks_for_twenty_lines() -> None:
     assert recorder.bodies[0]["size"] == 20
 
 
+@pytest.mark.parametrize(
+    ("tool", "filter_text"),
+    [
+        ("search_pipeline_log", 'kubernetes.pod_name:"req-1"'),
+        ("search_pipeline_service_log", 'parsed.pipeline-id:"req-1"'),
+    ],
+)
+async def test_search_log_query_string_has_filter_and_text(
+    tool: str, filter_text: str
+) -> None:
+    hits: list[dict[str, JsonValue]] = [
+        {"_source": {"log": "boom"}, "sort": ["t1"]},
+    ]
+    async with _wired(hits=hits) as recorder:
+        result = await mcp.call_tool(
+            tool,
+            {"request_id": "req-1", "query": "boom"},
+        )
+    value = _page_from_tool(result)
+    assert value["lines"] == ["boom"]
+    query = recorder.bodies[0]["query"]
+    assert isinstance(query, dict)
+    clause = query["query_string"]
+    assert isinstance(clause, dict)
+    assert clause["query"] == f'{filter_text} AND "boom"'
+
+
 async def test_timescaling_log_tool_reads_store() -> None:
     @dataclass(frozen=True, slots=True)
     class Store:

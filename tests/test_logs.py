@@ -189,3 +189,27 @@ async def test_client_sets_basic_auth_header() -> None:
     ) as client:
         token = b64encode(b"elastic:es-pass").decode("ascii")
         assert client.headers["Authorization"] == f"Basic {token}"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("boom", 'kubernetes.pod_name:"req-1" AND "boom"'),
+        (
+            'status:error AND "fail"',
+            'kubernetes.pod_name:"req-1" AND "status:error AND \\"fail\\""',
+        ),
+    ],
+)
+async def test_query_is_quoted_and_anded_with_kind_filter(
+    text: str, expected: str
+) -> None:
+    request = LogRequest(request_id="req-1", log_kind=LogKind.PIPELINE, query=text)
+    _, bodies = await _fetch(request, [])
+    assert _query_string(bodies[0])["query"] == expected
+
+
+async def test_empty_query_raises() -> None:
+    request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE, query="")
+    with pytest.raises(SettingsError, match="empty query"):
+        _ = await _fetch(request, [])

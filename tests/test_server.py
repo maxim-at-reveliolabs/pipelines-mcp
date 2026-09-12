@@ -20,12 +20,14 @@ _NAMES: Final[tuple[str, ...]] = (
     "get_pipeline_pod_config",
     "get_pipeline_log",
     "get_pipeline_service_log",
+    "search_pipeline_log",
+    "search_pipeline_service_log",
     "get_pipeline_start",
     "get_timescaling_log",
 )
 
 
-async def test_lists_exactly_eleven_tool_names() -> None:
+async def test_lists_exactly_thirteen_tool_names() -> None:
     tools = await mcp.list_tools()
     names = tuple(tool.name for tool in tools)
     assert names == _NAMES
@@ -37,6 +39,7 @@ async def test_lists_exactly_eleven_tool_names() -> None:
         ("get_pipeline_log", {"request_id": ""}),
         ("get_pipeline_status", {"request_id": ""}),
         ("get_pipeline_pod", {"pod_name": ""}),
+        ("search_pipeline_log", {"request_id": "r1", "query": ""}),
     ],
 )
 async def test_empty_required_token_raises_tool_error(

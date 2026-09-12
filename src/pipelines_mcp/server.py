@@ -46,6 +46,8 @@ pipeline id.
 
 If the user already gave a request_id UUID, call get_pipeline_status
 next. Then get_pipeline_log and get_pipeline_service_log.
+search_pipeline_log and search_pipeline_service_log find matching lines
+in those logs. query is required.
 get_pipeline_start returns the keys from the service line that starts the
 job. arguments stays the original JSON string. As part of troubleshooting,
 parse arguments and check that this config JSON is valid and uses the
@@ -87,6 +89,7 @@ async def _es_log(
     cursor: str | None = None,
     *,
     full: bool = False,
+    query: str | None = None,
 ) -> LogPage:
     return await fetch_logs(
         get_logs_client(),
@@ -95,6 +98,7 @@ async def _es_log(
             log_kind=log_kind,
             cursor=cursor,
             full=full,
+            query=query,
         ),
     )
 
@@ -220,6 +224,36 @@ async def get_pipeline_service_log(
     Use with worker logs. Same cursor rules as get_pipeline_log.
     """
     return await _es_log(request_id, LogKind.SERVICE, cursor, full=full)
+
+
+@_tool
+async def search_pipeline_log(
+    request_id: str,
+    query: str,
+    cursor: str | None = None,
+    *,
+    full: bool = False,
+) -> LogPage:
+    """Find matching worker log lines for a request_id UUID.
+
+    query is required and must not be empty. Same cursor rules as get_pipeline_log.
+    """
+    return await _es_log(request_id, LogKind.PIPELINE, cursor, full=full, query=query)
+
+
+@_tool
+async def search_pipeline_service_log(
+    request_id: str,
+    query: str,
+    cursor: str | None = None,
+    *,
+    full: bool = False,
+) -> LogPage:
+    """Find matching service log lines for a request_id UUID.
+
+    query is required and must not be empty. Same cursor rules as get_pipeline_log.
+    """
+    return await _es_log(request_id, LogKind.SERVICE, cursor, full=full, query=query)
 
 
 @_tool

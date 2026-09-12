@@ -81,6 +81,7 @@ class LogRequest:
     log_kind: LogKind
     cursor: str | None = None
     full: bool = False
+    query: str | None = None
 
 
 def _search_body(
@@ -94,8 +95,12 @@ def _search_body(
             field = "parsed.pipeline-id"
         case LogKind.PIPELINE:
             field = "kubernetes.pod_name"
+    query = f'{field}:"{request.request_id}"'
+    if request.query is not None:
+        quoted = request.query.replace("\\", "\\\\").replace('"', '\\"')
+        query = f'{query} AND "{quoted}"'
     body: dict[str, JsonValue] = {
-        "query": {"query_string": {"query": f'{field}:"{request.request_id}"'}},
+        "query": {"query_string": {"query": query}},
         "sort": [{"@timestamp": {"order": order}}],
         "size": size,
     }
@@ -271,7 +276,9 @@ async def fetch_logs(
 ) -> LogPage:
     """Fetch one capped log page from Elasticsearch."""
     normalized = replace(
-        request, request_id=nonempty(request.request_id, "request_id")
+        request,
+        request_id=nonempty(request.request_id, "request_id"),
+        query=None if request.query is None else nonempty(request.query, "query"),
     )
     mode = LogMode.FULL if normalized.full else LogMode.TAIL
     prior_sa: list[str | int | float] | None = None
