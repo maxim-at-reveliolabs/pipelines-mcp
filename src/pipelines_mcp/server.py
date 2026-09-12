@@ -85,7 +85,6 @@ async def _es_log(
     cursor: str | None = None,
     *,
     full: bool = False,
-    size: int | None = None,
 ) -> LogPage:
     return await fetch_logs(
         get_logs_client(),
@@ -95,7 +94,6 @@ async def _es_log(
             cursor=cursor,
             full=full,
         ),
-        size=size,
     )
 
 
@@ -215,7 +213,11 @@ async def get_pipeline_start(request_id: str) -> PipelineStart:
     arguments stays the original JSON string. Use when the job is gone and you
     need those keys. Retry if the line is not there yet.
     """
-    page = await _es_log(request_id, LogKind.SERVICE, full=True, size=20)
+    page = await fetch_logs(
+        get_logs_client(),
+        LogRequest(request_id=request_id, log_kind=LogKind.SERVICE, full=True),
+        size=20,
+    )
     return parse_start(page.lines)
 
 
