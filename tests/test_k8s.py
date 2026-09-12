@@ -1,25 +1,29 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import ClassVar
 
 import pytest
+from kubernetes.client import (
+    V1ContainerState,
+    V1ContainerStateRunning,
+    V1ContainerStateTerminated,
+    V1ContainerStateWaiting,
+    V1ContainerStatus,
+    V1Job,
+    V1JobCondition,
+    V1JobList,
+    V1JobSpec,
+    V1JobStatus,
+    V1LabelSelector,
+    V1ObjectMeta,
+    V1Pod,
+    V1PodList,
+    V1PodStatus,
+    V1PodTemplateSpec,
+)
 
 from pipelines_mcp.errors import NotFoundError
-from pipelines_mcp.k8s import (
-    ContainerStateView,
-    ContainerStatusView,
-    JobConditionView,
-    JobSpecView,
-    JobStatusView,
-    K8s,
-    K8sApiError,
-    LabelSelector,
-    ObjectMeta,
-    PodStatusView,
-    PodView,
-    Presence,
-)
+from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.models import (
     ContainerState,
     PodName,
@@ -37,148 +41,40 @@ _START = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 @dataclass(frozen=True, slots=True)
-class Present:
-    """Non-none k8s container-state sub-object."""
-
-
-@dataclass(frozen=True, slots=True)
-class FakeMeta:
-    name: str | None = None
-    uid: str | None = None
-    labels: Mapping[str, str] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeSelector:
-    match_labels: Mapping[str, str] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeJobSpec:
-    selector: LabelSelector | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeCondition:
-    type: str | None = None
-    message: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeJobStatus:
-    failed: int | None = None
-    succeeded: int | None = None
-    active: int | None = None
-    start_time: datetime | None = None
-    completion_time: datetime | None = None
-    conditions: Sequence[JobConditionView] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeJob:
-    metadata: ObjectMeta | None = None
-    spec: JobSpecView | None = None
-    status: JobStatusView | None = None
-
-    def to_dict(self) -> dict[str, str]:
-        name = ""
-        if self.metadata is not None and self.metadata.name is not None:
-            name = self.metadata.name
-        return {"name": name, "secret": _SECRET}
-
-
-@dataclass(frozen=True, slots=True)
-class FakeOpenApiJob(FakeJob):
-    openapi_types: ClassVar[dict[str, str]] = {
-        "api_version": "str",
-        "kind": "str",
-    }
-    attribute_map: ClassVar[dict[str, str]] = {
-        "api_version": "apiVersion",
-        "kind": "kind",
-    }
-    api_version: str = "batch/v1"
-    kind: str = "Job"
-
-
-@dataclass(frozen=True, slots=True)
-class FakeContainerState:
-    waiting: Presence | None = None
-    running: Presence | None = None
-    terminated: Presence | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeContainerStatus:
-    name: str | None = None
-    ready: bool | None = None
-    state: ContainerStateView | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakePodStatus:
-    phase: str | None = None
-    start_time: datetime | None = None
-    container_statuses: Sequence[ContainerStatusView] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakePod:
-    metadata: ObjectMeta | None = None
-    status: PodStatusView | None = None
-
-    def to_dict(self) -> dict[str, str]:
-        name = ""
-        if self.metadata is not None and self.metadata.name is not None:
-            name = self.metadata.name
-        return {"name": name, "secret": _SECRET}
-
-
-@dataclass(frozen=True, slots=True)
-class FakePodList:
-    items: Sequence[PodView] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeJobList:
-    items: Sequence[FakeJob] | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class FakeBatch:
     """In-memory BatchV1Api. calls grows because this is a recorder."""
 
-    jobs: dict[str, FakeJob]
+    jobs: dict[str, V1Job]
     calls: list[tuple[str, str]] = field(default_factory=list)
 
-    def read_namespaced_job(self, name: str, namespace: str) -> FakeJob:
+    def read_namespaced_job(self, name: str, namespace: str) -> V1Job:
         self.calls.append((name, namespace))
         job = self.jobs.get(name)
         if job is None:
             raise K8sApiError(status=404)
         return job
 
-    def list_namespaced_job(self, namespace: str) -> FakeJobList:
+    def list_namespaced_job(self, namespace: str) -> V1JobList:
         _ = namespace
-        return FakeJobList(items=tuple(self.jobs.values()))
+        return V1JobList(items=list(self.jobs.values()))
 
 
 @dataclass(frozen=True, slots=True)
 class FakeCore:
     """In-memory CoreV1Api. selectors grows because this is a recorder."""
 
-    pods: dict[str, FakePod]
-    by_selector: dict[str, tuple[FakePod, ...]]
+    pods: dict[str, V1Pod]
+    by_selector: dict[str, tuple[V1Pod, ...]]
     selectors: list[str] = field(default_factory=list)
 
     def list_namespaced_pod(
         self, namespace: str, *, label_selector: str
-    ) -> FakePodList:
+    ) -> V1PodList:
         _ = namespace
         self.selectors.append(label_selector)
-        return FakePodList(items=self.by_selector.get(label_selector, ()))
+        return V1PodList(items=list(self.by_selector.get(label_selector, ())))
 
-    def read_namespaced_pod(self, name: str, namespace: str) -> FakePod:
+    def read_namespaced_pod(self, name: str, namespace: str) -> V1Pod:
         _ = namespace
         pod = self.pods.get(name)
         if pod is None:
@@ -191,10 +87,10 @@ def _status(
     failed: int | None = None,
     succeeded: int | None = None,
     active: int | None = None,
-    conditions: tuple[FakeCondition, ...] | None = None,
+    conditions: list[V1JobCondition] | None = None,
     start_time: datetime | None = _START,
-) -> FakeJobStatus:
-    return FakeJobStatus(
+) -> V1JobStatus:
+    return V1JobStatus(
         failed=failed,
         succeeded=succeeded,
         active=active,
@@ -208,39 +104,52 @@ def _job(
     name: str = "r1-0-0",
     uid: str | None = None,
     labels: dict[str, str] | None = None,
-    status: FakeJobStatus | None = None,
-) -> FakeJob:
-    selector = None if labels is None else FakeSelector(match_labels=labels)
-    return FakeJob(
-        metadata=FakeMeta(name=name, uid=uid),
-        spec=FakeJobSpec(selector=selector),
+    status: V1JobStatus | None = None,
+) -> V1Job:
+    selector = None if labels is None else V1LabelSelector(match_labels=labels)
+    return V1Job(
+        api_version="batch/v1",
+        kind="Job",
+        metadata=V1ObjectMeta(name=name, uid=uid, annotations={"x": _SECRET}),
+        spec=V1JobSpec(selector=selector, template=V1PodTemplateSpec()),
         status=_status() if status is None else status,
     )
 
 
 def _pod(
     *,
-    state: FakeContainerState,
+    state: V1ContainerState,
     phase: str = "Running",
     labels: Mapping[str, str] | None = None,
-) -> FakePod:
-    return FakePod(
-        metadata=FakeMeta(name=_POD, labels=labels),
-        status=FakePodStatus(
+) -> V1Pod:
+    return V1Pod(
+        metadata=V1ObjectMeta(
+            name=_POD,
+            labels=None if labels is None else dict(labels),
+            annotations={"x": _SECRET},
+        ),
+        status=V1PodStatus(
             phase=phase,
             start_time=_START,
-            container_statuses=(
-                FakeContainerStatus(name="main", ready=True, state=state),
-            ),
+            container_statuses=[
+                V1ContainerStatus(
+                    name="main",
+                    ready=True,
+                    restart_count=0,
+                    image="img",
+                    image_id="id",
+                    state=state,
+                )
+            ],
         ),
     )
 
 
 def _k8s(
     *,
-    jobs: dict[str, FakeJob] | None = None,
-    pods: dict[str, FakePod] | None = None,
-    by_selector: dict[str, tuple[FakePod, ...]] | None = None,
+    jobs: dict[str, V1Job] | None = None,
+    pods: dict[str, V1Pod] | None = None,
+    by_selector: dict[str, tuple[V1Pod, ...]] | None = None,
 ) -> tuple[K8s, FakeBatch, FakeCore]:
     batch = FakeBatch(jobs={} if jobs is None else jobs)
     core = FakeCore(
@@ -257,7 +166,7 @@ def _k8s(
         {},
     ],
 )
-def test_list_pods_empty(jobs: dict[str, FakeJob]) -> None:
+def test_list_pods_empty(jobs: dict[str, V1Job]) -> None:
     # Given: a job with no matching pods, or no job at all
     client, _batch, _core = _k8s(jobs=jobs)
 
@@ -316,7 +225,7 @@ def test_job_status_failed_when_failed_is_1() -> None:
 
 def test_container_waiting_maps_state() -> None:
     # Given: container state.waiting is set
-    pod = _pod(state=FakeContainerState(waiting=Present()))
+    pod = _pod(state=V1ContainerState(waiting=V1ContainerStateWaiting()))
     client, _batch, core = _k8s(
         jobs={_JOB: _job(labels={"job-name": "r1-0-0"}, status=_status(active=1))},
         by_selector={"job-name=r1-0-0": (pod,)},
@@ -332,7 +241,7 @@ def test_container_waiting_maps_state() -> None:
 
 def test_container_running_maps_state() -> None:
     # Given: container state.running is set
-    pod = _pod(state=FakeContainerState(running=Present()))
+    pod = _pod(state=V1ContainerState(running=V1ContainerStateRunning()))
     client, _batch, _core = _k8s(pods={_POD: pod})
 
     # When: getting the pod
@@ -345,7 +254,10 @@ def test_container_running_maps_state() -> None:
 
 def test_container_terminated_maps_state() -> None:
     # Given: container state.terminated is set
-    pod = _pod(state=FakeContainerState(terminated=Present()), phase="Succeeded")
+    pod = _pod(
+        state=V1ContainerState(terminated=V1ContainerStateTerminated(exit_code=0)),
+        phase="Succeeded",
+    )
     client, _batch, _core = _k8s(pods={_POD: pod})
 
     # When: getting the pod
@@ -358,7 +270,7 @@ def test_container_terminated_maps_state() -> None:
 def test_get_pod_job_name_from_labels() -> None:
     # Given: a pod with the job-name label
     pod = _pod(
-        state=FakeContainerState(running=Present()),
+        state=V1ContainerState(running=V1ContainerStateRunning()),
         labels={"batch.kubernetes.io/job-name": "pipelines-r1-0-0"},
     )
     client, _batch, _core = _k8s(pods={_POD: pod})
@@ -377,10 +289,14 @@ def test_failed_reason_is_first_failed_condition_and_redacted() -> None:
             _JOB: _job(
                 status=_status(
                     failed=1,
-                    conditions=(
-                        FakeCondition(type="Failed", message=_SECRET),
-                        FakeCondition(type="Failed", message="later"),
-                    ),
+                    conditions=[
+                        V1JobCondition(
+                            type="Failed", message=_SECRET, status="True"
+                        ),
+                        V1JobCondition(
+                            type="Failed", message="later", status="True"
+                        ),
+                    ],
                 ),
             )
         }
@@ -474,9 +390,8 @@ def test_job_config_redacts_secrets() -> None:
 
 
 def test_job_config_uses_api_field_names() -> None:
-    # Given: a job object with OpenAPI attribute_map
-    job = FakeOpenApiJob(metadata=FakeMeta(name=_JOB))
-    client, _batch, _core = _k8s(jobs={_JOB: job})
+    # Given: a kubernetes job object
+    client, _batch, _core = _k8s(jobs={_JOB: _job()})
 
     # When: reading the job config
     row = client.job_config(_JOB)
@@ -489,7 +404,7 @@ def test_job_config_uses_api_field_names() -> None:
 def test_pod_config_redacts_secrets() -> None:
     # Given: a pod whose dumped config contains a credential
     client, _batch, _core = _k8s(
-        pods={_POD: _pod(state=FakeContainerState(running=Present()))}
+        pods={_POD: _pod(state=V1ContainerState(running=V1ContainerStateRunning()))}
     )
 
     # When: reading the pod config

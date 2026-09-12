@@ -1,6 +1,6 @@
 """Read-only job and pod access over an injected kubernetes API."""
 
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
 
@@ -28,8 +28,19 @@ from pipelines_mcp.redact import redact_text
 from pipelines_mcp.settings import AWS_PROFILE
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable
     from datetime import datetime
+
+    from kubernetes.client import (
+        V1ContainerState,
+        V1ContainerStatus,
+        V1Job,
+        V1JobList,
+        V1JobStatus,
+        V1ObjectMeta,
+        V1Pod,
+        V1PodList,
+    )
 
 
 @dataclass(slots=True)
@@ -47,134 +58,12 @@ class K8sApiError(Exception):
         return f"cluster api {self.status}"
 
 
-class Presence(Protocol):
-    """Presence-only k8s sub-object."""
-
-
-class ObjectMeta(Protocol):
-    """Job or pod metadata fields we read."""
-
-    @property
-    def name(self) -> str | None: ...
-    @property
-    def uid(self) -> str | None: ...
-    @property
-    def labels(self) -> Mapping[str, str] | None: ...
-
-
-class LabelSelector(Protocol):
-    """Job spec selector."""
-
-    @property
-    def match_labels(self) -> Mapping[str, str] | None: ...
-
-
-class JobSpecView(Protocol):
-    """Job spec fields we read."""
-
-    @property
-    def selector(self) -> LabelSelector | None: ...
-
-
-class JobConditionView(Protocol):
-    """One job status condition."""
-
-    @property
-    def type(self) -> str | None: ...
-    @property
-    def message(self) -> str | None: ...
-
-
-class JobStatusView(Protocol):
-    """Job status fields we read."""
-
-    @property
-    def failed(self) -> int | None: ...
-    @property
-    def succeeded(self) -> int | None: ...
-    @property
-    def active(self) -> int | None: ...
-    @property
-    def start_time(self) -> datetime | None: ...
-    @property
-    def completion_time(self) -> datetime | None: ...
-    @property
-    def conditions(self) -> Sequence[JobConditionView] | None: ...
-
-
-class JobView(Protocol):
-    """Namespaced Job object."""
-
-    @property
-    def metadata(self) -> ObjectMeta | None: ...
-    @property
-    def spec(self) -> JobSpecView | None: ...
-    @property
-    def status(self) -> JobStatusView | None: ...
-
-
-class ContainerStateView(Protocol):
-    """Which container state sub-object is set."""
-
-    @property
-    def waiting(self) -> Presence | None: ...
-    @property
-    def running(self) -> Presence | None: ...
-    @property
-    def terminated(self) -> Presence | None: ...
-
-
-class ContainerStatusView(Protocol):
-    """One container status on a pod."""
-
-    @property
-    def name(self) -> str | None: ...
-    @property
-    def ready(self) -> bool | None: ...
-    @property
-    def state(self) -> ContainerStateView | None: ...
-
-
-class PodStatusView(Protocol):
-    """Pod status fields we read."""
-
-    @property
-    def phase(self) -> str | None: ...
-    @property
-    def start_time(self) -> datetime | None: ...
-    @property
-    def container_statuses(self) -> Sequence[ContainerStatusView] | None: ...
-
-
-class PodView(Protocol):
-    """Namespaced Pod object."""
-
-    @property
-    def metadata(self) -> ObjectMeta | None: ...
-    @property
-    def status(self) -> PodStatusView | None: ...
-
-
-class PodListView(Protocol):
-    """Pod list result."""
-
-    @property
-    def items(self) -> Sequence[PodView] | None: ...
-
-
-class JobListView(Protocol):
-    """Job list result."""
-
-    @property
-    def items(self) -> Sequence[JobView] | None: ...
-
-
 class BatchApi(Protocol):
     """Injected batch API. Not a live cluster client."""
 
-    def read_namespaced_job(self, name: str, namespace: str) -> JobView: ...
+    def read_namespaced_job(self, name: str, namespace: str) -> V1Job: ...
 
-    def list_namespaced_job(self, namespace: str) -> JobListView: ...
+    def list_namespaced_job(self, namespace: str) -> V1JobList: ...
 
 
 class CoreApi(Protocol):
@@ -182,9 +71,9 @@ class CoreApi(Protocol):
 
     def list_namespaced_pod(
         self, namespace: str, *, label_selector: str
-    ) -> PodListView: ...
+    ) -> V1PodList: ...
 
-    def read_namespaced_pod(self, name: str, namespace: str) -> PodView: ...
+    def read_namespaced_pod(self, name: str, namespace: str) -> V1Pod: ...
 
 
 def _is_batch(api: object) -> TypeIs[BatchApi]:
@@ -210,7 +99,7 @@ def _time(value: datetime | None) -> str | None:
     return redact_text(value.isoformat())
 
 
-def _job_status(status: JobStatusView | None) -> str:
+def _job_status(status: V1JobStatus | None) -> str:
     if status is None:
         return "Pending"
     if status.failed:
@@ -222,7 +111,7 @@ def _job_status(status: JobStatusView | None) -> str:
     return "Pending"
 
 
-def _failed_reason(status: JobStatusView | None) -> str | None:
+def _failed_reason(status: V1JobStatus | None) -> str | None:
     if status is None or status.conditions is None:
         return None
     for condition in status.conditions:
@@ -232,13 +121,13 @@ def _failed_reason(status: JobStatusView | None) -> str | None:
     return None
 
 
-def _meta_name(meta: ObjectMeta | None, fallback: str) -> str:
+def _meta_name(meta: V1ObjectMeta | None, fallback: str) -> str:
     if meta is None or meta.name is None:
         return fallback
     return meta.name
 
 
-def _job_dto(raw: JobView, name: JobName) -> Job:
+def _job_dto(raw: V1Job, name: JobName) -> Job:
     meta = raw.metadata
     raw_name = _meta_name(meta, name)
     status = raw.status
@@ -255,7 +144,7 @@ def _job_dto(raw: JobView, name: JobName) -> Job:
     )
 
 
-def _container_state(state: ContainerStateView | None) -> ContainerState:
+def _container_state(state: V1ContainerState | None) -> ContainerState:
     if state is None or state.waiting is not None:
         return ContainerState.WAITING
     if state.running is not None:
@@ -265,7 +154,7 @@ def _container_state(state: ContainerStateView | None) -> ContainerState:
     return ContainerState.WAITING
 
 
-def _container(item: ContainerStatusView) -> ContainerStatus:
+def _container(item: V1ContainerStatus) -> ContainerStatus:
     name = "" if item.name is None else item.name
     return ContainerStatus(
         name=redact_text(name),
@@ -274,7 +163,7 @@ def _container(item: ContainerStatusView) -> ContainerStatus:
     )
 
 
-def _pod_job_name(meta: ObjectMeta | None, job: JobName | None) -> str:
+def _pod_job_name(meta: V1ObjectMeta | None, job: JobName | None) -> str:
     if job is not None:
         return job
     labels = None if meta is None else meta.labels
@@ -283,7 +172,7 @@ def _pod_job_name(meta: ObjectMeta | None, job: JobName | None) -> str:
     return labels.get("batch.kubernetes.io/job-name") or labels.get("job-name") or ""
 
 
-def _pod_dto(raw: PodView, job: JobName | None = None) -> Pod:
+def _pod_dto(raw: V1Pod, job: JobName | None = None) -> Pod:
     meta = raw.metadata
     name = _meta_name(meta, "")
     status = raw.status
@@ -305,35 +194,28 @@ type _YamlValue = _YamlAtom | list[_YamlValue] | dict[str, _YamlValue]
 _YAML_MAP: TypeAdapter[dict[str, _YamlValue]] = TypeAdapter(dict[str, _YamlValue])
 
 
-def _config_payload(raw: JobView | PodView) -> dict[str, _YamlValue]:
-    if hasattr(raw, "openapi_types") and hasattr(raw, "attribute_map"):
-        from kubernetes.client import ApiClient  # noqa: PLC0415  # load on use
+def _config_payload(raw: V1Job | V1Pod) -> dict[str, _YamlValue]:
+    from kubernetes.client import ApiClient  # noqa: PLC0415  # load on use
 
-        dumped = json.dumps(
-            ApiClient().sanitize_for_serialization(raw), default=str
-        )
-        return _YAML_MAP.validate_json(dumped)
-    to_dict = getattr(raw, "to_dict", None)
-    if not callable(to_dict):
-        return {}
-    return _YAML_MAP.validate_json(json.dumps(to_dict(), default=str))
+    dumped = json.dumps(ApiClient().sanitize_for_serialization(raw), default=str)
+    return _YAML_MAP.validate_json(dumped)
 
 
-def _config_yaml(raw: JobView | PodView) -> str:
+def _config_yaml(raw: V1Job | V1Pod) -> str:
     dumped = yaml.safe_dump(
         _config_payload(raw), sort_keys=False, allow_unicode=True
     )
     return redact_text(dumped)
 
 
-def _object_config(raw: JobView | PodView, fallback: str) -> ObjectConfig:
+def _object_config(raw: V1Job | V1Pod, fallback: str) -> ObjectConfig:
     return ObjectConfig(
         name=redact_text(_meta_name(raw.metadata, fallback)),
         config=_config_yaml(raw),
     )
 
 
-def _pod_selector(job: JobView, name: JobName) -> str:
+def _pod_selector(job: V1Job, name: JobName) -> str:
     spec = job.spec
     if spec is not None:
         selector = spec.selector
@@ -377,19 +259,19 @@ class K8s:
         """Read one pod or raise NotFoundError."""
         return _pod_dto(self._require_pod(pod_name))
 
-    def _require_job(self, name: JobName) -> JobView:
+    def _require_job(self, name: JobName) -> V1Job:
         raw = self._read_job(name)
         if raw is None:
             raise NotFoundError(entity="job")
         return raw
 
-    def _require_pod(self, pod_name: PodName) -> PodView:
+    def _require_pod(self, pod_name: PodName) -> V1Pod:
         raw = _found(lambda: self.core.read_namespaced_pod(pod_name, self.namespace))
         if raw is None:
             raise NotFoundError(entity="pod")
         return raw
 
-    def _read_job(self, name: JobName) -> JobView | None:
+    def _read_job(self, name: JobName) -> V1Job | None:
         return _found(lambda: self.batch.read_namespaced_job(name, self.namespace))
 
     def list_jobs(
@@ -444,12 +326,12 @@ class _LiveBatch:
     api: BatchApi
     error_type: type[BaseException]
 
-    def read_namespaced_job(self, name: str, namespace: str) -> JobView:
+    def read_namespaced_job(self, name: str, namespace: str) -> V1Job:
         return _call(
             self.error_type, lambda: self.api.read_namespaced_job(name, namespace)
         )
 
-    def list_namespaced_job(self, namespace: str) -> JobListView:
+    def list_namespaced_job(self, namespace: str) -> V1JobList:
         return _call(self.error_type, lambda: self.api.list_namespaced_job(namespace))
 
 
@@ -460,7 +342,7 @@ class _LiveCore:
 
     def list_namespaced_pod(
         self, namespace: str, *, label_selector: str
-    ) -> PodListView:
+    ) -> V1PodList:
         return _call(
             self.error_type,
             lambda: self.api.list_namespaced_pod(
@@ -468,7 +350,7 @@ class _LiveCore:
             ),
         )
 
-    def read_namespaced_pod(self, name: str, namespace: str) -> PodView:
+    def read_namespaced_pod(self, name: str, namespace: str) -> V1Pod:
         return _call(
             self.error_type, lambda: self.api.read_namespaced_pod(name, namespace)
         )

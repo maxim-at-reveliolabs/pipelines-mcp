@@ -7,6 +7,14 @@ from typing import Final, NoReturn
 
 import httpx2
 import pytest
+from kubernetes.client import (
+    V1Job,
+    V1JobList,
+    V1JobSpec,
+    V1ObjectMeta,
+    V1PodList,
+    V1PodTemplateSpec,
+)
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, InputRequiredResult
 from pydantic import SecretStr, TypeAdapter
@@ -39,48 +47,29 @@ _FORBIDDEN: Final[tuple[str, ...]] = (
 
 
 @dataclass(frozen=True, slots=True)
-class FakeMeta:
-    name: str | None = None
-    uid: str | None = None
-    labels: dict[str, str] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeJob:
-    metadata: FakeMeta | None = None
-    spec: None = None
-    status: None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakePodList:
-    items: tuple[()] = ()
-
-
-@dataclass(frozen=True, slots=True)
 class FakeBatch:
-    jobs: dict[str, FakeJob]
+    jobs: dict[str, V1Job]
 
-    def read_namespaced_job(self, name: str, namespace: str) -> FakeJob:
+    def read_namespaced_job(self, name: str, namespace: str) -> V1Job:
         _ = namespace
         job = self.jobs.get(name)
         if job is None:
             raise K8sApiError(status=404)
         return job
 
-    def list_namespaced_job(self, namespace: str) -> FakePodList:
+    def list_namespaced_job(self, namespace: str) -> V1JobList:
         _ = namespace
-        return FakePodList()
+        return V1JobList(items=[])
 
 
 @dataclass(frozen=True, slots=True)
 class FakeCore:
     def list_namespaced_pod(
         self, namespace: str, *, label_selector: str
-    ) -> FakePodList:
+    ) -> V1PodList:
         _ = namespace
         _ = label_selector
-        return FakePodList()
+        return V1PodList(items=[])
 
     def read_namespaced_pod(self, name: str, namespace: str) -> NoReturn:
         _ = name
@@ -132,7 +121,7 @@ def _kind_clause(body: dict[str, JsonValue]) -> dict[str, JsonValue]:
 @asynccontextmanager
 async def _wired(
     *,
-    jobs: dict[str, FakeJob] | None = None,
+    jobs: dict[str, V1Job] | None = None,
     hits: list[dict[str, JsonValue]] | None = None,
 ) -> AsyncGenerator[Recorder]:
     recorder = Recorder(bodies=[])
@@ -168,7 +157,10 @@ async def _wired(
 
 async def test_list_pipeline_pods_empty_through_tool() -> None:
     jobs = {
-        "pipelines-r1-0-0": FakeJob(metadata=FakeMeta(name="pipelines-r1-0-0")),
+        "pipelines-r1-0-0": V1Job(
+            metadata=V1ObjectMeta(name="pipelines-r1-0-0"),
+            spec=V1JobSpec(template=V1PodTemplateSpec()),
+        ),
     }
     async with _wired(jobs=jobs):
         result = await mcp.call_tool(
