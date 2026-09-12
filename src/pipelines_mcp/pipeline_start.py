@@ -1,11 +1,14 @@
 """Parse the service line that starts a pipeline job."""
 
 from collections.abc import Sequence
+from typing import Final
 
 from pydantic import TypeAdapter, ValidationError
 
 from pipelines_mcp.errors import SettingsError
 from pipelines_mcp.models import PipelineStart
+
+_START_FIELDS: Final = TypeAdapter(dict[str, str])
 
 
 def parse_start(lines: Sequence[str]) -> PipelineStart:
@@ -14,7 +17,7 @@ def parse_start(lines: Sequence[str]) -> PipelineStart:
         if "[k8s-client] starting pipeline" not in line:
             continue
         try:
-            payload = TypeAdapter(dict[str, str]).validate_json(line)
+            payload = _START_FIELDS.validate_json(line)
             return PipelineStart(
                 timestamp=payload["@timestamp"],
                 job_name=payload["job-name"],
