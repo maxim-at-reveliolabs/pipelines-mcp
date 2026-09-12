@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Annotated, ClassVar, Final
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -29,10 +30,12 @@ type SecretReader = Callable[[str], str]
 
 
 class EsAuth(BaseModel):
-    """Username and password for the log store."""
+    """Username and password."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="ignore")
-    username: Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
+    username: Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)] = (
+        Field(validation_alias=AliasChoices("username", "user"))
+    )
     password: SecretStr = Field(min_length=1)
 
     @field_validator("password", mode="before")
@@ -59,10 +62,22 @@ def _aws_read(secret_id: str) -> str:
     return secret
 
 
-def load_es_auth(*, read_secret: SecretReader | None = None) -> EsAuth:
-    """Read Elasticsearch basic auth from AWS Secrets Manager."""
+def _load_auth(secret_id: str, *, read_secret: SecretReader | None) -> EsAuth:
     reader = _aws_read if read_secret is None else read_secret
     try:
-        return EsAuth.model_validate_json(reader("elasticsearch/elastic"))
+        return EsAuth.model_validate_json(reader(secret_id))
     except (ValidationError, ValueError) as exc:
         raise SettingsError(reason="secret is invalid") from exc
+
+
+def load_es_auth(*, read_secret: SecretReader | None = None) -> EsAuth:
+    """Read Elasticsearch basic auth from AWS Secrets Manager."""
+    return _load_auth("elasticsearch/elastic", read_secret=read_secret)
+
+
+def load_pipeline_auth(*, read_secret: SecretReader | None = None) -> EsAuth:
+    """Read pipeline service login from AWS Secrets Manager."""
+    return _load_auth(
+        "pipelines/prod/service_pipelines_user_prod@reveliolabs.com",
+        read_secret=read_secret,
+    )

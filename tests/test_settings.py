@@ -5,7 +5,12 @@ from typing import Final
 import pytest
 
 from pipelines_mcp.errors import SettingsError
-from pipelines_mcp.settings import AWS_PROFILE, AWS_REGION, load_es_auth
+from pipelines_mcp.settings import (
+    AWS_PROFILE,
+    AWS_REGION,
+    load_es_auth,
+    load_pipeline_auth,
+)
 
 
 def test_cluster_constants_are_baked_in() -> None:
@@ -70,3 +75,22 @@ def test_repr_hides_loaded_secret_values() -> None:
     )
     auth = load_es_auth(read_secret=reader)
     assert "super-secret-es-pass" not in repr(auth)
+
+
+_PIPELINE_AUTH_KEY: Final = (
+    "pipelines/prod/service_pipelines_user_prod@reveliolabs.com"
+)
+
+
+def test_load_pipeline_auth_reads_user_and_password() -> None:
+    reader = _reader(
+        {
+            _PIPELINE_AUTH_KEY: {
+                "user": "service_pipelines_user_prod@reveliolabs.com",
+                "password": "pipeline-secret-pass",
+            }
+        }
+    )
+    auth = load_pipeline_auth(read_secret=reader)
+    assert auth.username == "service_pipelines_user_prod@reveliolabs.com"
+    assert auth.password.get_secret_value() == "pipeline-secret-pass"

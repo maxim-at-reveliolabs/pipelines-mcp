@@ -12,6 +12,7 @@ pytestmark = pytest.mark.anyio
 
 _NAMES: Final[tuple[str, ...]] = (
     "list_pipeline_jobs",
+    "get_pipeline_status",
     "get_pipeline_job",
     "list_pipeline_pods",
     "get_pipeline_job_config",
@@ -24,7 +25,7 @@ _NAMES: Final[tuple[str, ...]] = (
 )
 
 
-async def test_lists_exactly_ten_tool_names() -> None:
+async def test_lists_exactly_eleven_tool_names() -> None:
     tools = await mcp.list_tools()
     names = tuple(tool.name for tool in tools)
     assert names == _NAMES
@@ -34,6 +35,7 @@ async def test_lists_exactly_ten_tool_names() -> None:
     ("tool", "args"),
     [
         ("get_pipeline_log", {"request_id": ""}),
+        ("get_pipeline_status", {"request_id": ""}),
         ("get_pipeline_pod", {"pod_name": ""}),
     ],
 )

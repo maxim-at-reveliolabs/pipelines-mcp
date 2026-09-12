@@ -19,12 +19,14 @@ from pydantic import SecretStr, TypeAdapter
 
 from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import JsonValue, create_async_client
+from pipelines_mcp.models import PipelineStatus, PipelineStepStatus
 from pipelines_mcp.server import mcp
 from pipelines_mcp.server_app import (
     set_k8s_factory,
     set_logs_factory,
     set_object_store_factory,
     set_reauth,
+    set_status_store_factory,
 )
 from pipelines_mcp.settings import EsAuth
 
@@ -126,8 +128,52 @@ async def _wired(
     finally:
         set_logs_factory(None)
         set_k8s_factory(None)
+        set_status_store_factory(None)
         set_reauth(None)
         await client.aclose()
+
+
+async def test_get_pipeline_status_through_tool() -> None:
+    payload = PipelineStatus(
+        request_id="req-1",
+        name="Pipelines Rust Lifecycle",
+        status="error",
+        start_time="t0",
+        end_time="t1",
+        created_at="t2",
+        steps=(
+            PipelineStepStatus(
+                step_index=0,
+                name="",
+                arguments='{"batchtime": "202609"}',
+            ),
+        ),
+    )
+
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def get(self, request_id: str) -> PipelineStatus:
+            _ = request_id
+            return payload
+
+    set_status_store_factory(Store)
+    try:
+        async with _wired():
+            result = await mcp.call_tool(
+                "get_pipeline_status",
+                {"request_id": "req-1"},
+            )
+    finally:
+        set_status_store_factory(None)
+    value = _tool_json(result)
+    assert isinstance(value, dict)
+    assert value["status"] == "error"
+    steps = value["steps"]
+    assert isinstance(steps, list)
+    first = steps[0]
+    assert isinstance(first, dict)
+    assert first["step_index"] == 0
+    assert first["arguments"] == '{"batchtime": "202609"}'
 
 
 async def test_list_pipeline_pods_empty_through_tool() -> None:

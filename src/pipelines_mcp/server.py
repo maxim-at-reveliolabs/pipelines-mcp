@@ -14,6 +14,7 @@ from pipelines_mcp.models import (
     LogPage,
     ObjectConfig,
     PipelineStart,
+    PipelineStatus,
     Pod,
     job_name,
 )
@@ -22,6 +23,7 @@ from pipelines_mcp.server_app import (
     get_k8s,
     get_logs_client,
     get_object_store,
+    get_status_store,
     tool_boundary,
 )
 from pipelines_mcp.timescaling_logs import TimescalingLogRequest, fetch_timescaling_logs
@@ -42,8 +44,8 @@ get_pipeline_log. Never call list_pipeline_jobs for that. Typical UUID lines:
 Fast pipeline <uuid> ... failed; StartMultipartPipeline; pipeline-id;
 pipeline id.
 
-If the user already gave a request_id UUID, call get_pipeline_log next. Also
-get_pipeline_service_log for the service that launched the worker.
+If the user already gave a request_id UUID, call get_pipeline_status
+next. Then get_pipeline_log and get_pipeline_service_log.
 get_pipeline_start returns the keys from the service line that starts the
 job. arguments stays the original JSON string. As part of troubleshooting,
 parse arguments and check that this config JSON is valid and uses the
@@ -122,6 +124,20 @@ async def list_pipeline_jobs(
         status_filter,
         prefix,
         min(100, max(1, limit)),
+    )
+
+
+@_tool
+async def get_pipeline_status(request_id: str) -> PipelineStatus:
+    """Pipeline service status and steps for a request_id UUID.
+
+    Use this first when the user gave a request_id. Jobs may already be gone.
+    Status is pending, running, error, complete, cancelled, or split. Steps
+    are in pipeline service order as step_index. arguments is the step JSON
+    string.
+    """
+    return await run_sync(
+        get_status_store().get, nonempty(request_id, "request_id")
     )
 
 

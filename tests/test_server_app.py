@@ -10,14 +10,17 @@ from pydantic import SecretStr
 from pipelines_mcp.errors import SsoLoginRequiredError
 from pipelines_mcp.k8s import K8s, K8sApiError
 from pipelines_mcp.logs import create_async_client
+from pipelines_mcp.models import PipelineStatus
 from pipelines_mcp.server_app import (
     get_k8s,
     get_logs_client,
     get_object_store,
+    get_status_store,
     set_k8s_factory,
     set_logs_factory,
     set_object_store_factory,
     set_reauth,
+    set_status_store_factory,
     tool_boundary,
 )
 from pipelines_mcp.settings import EsAuth
@@ -89,6 +92,24 @@ async def test_get_object_store_does_not_check_sso() -> None:
     finally:
         set_reauth(None)
         set_object_store_factory(None)
+
+
+async def test_get_status_store_does_not_check_sso() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Store:
+        def get(self, request_id: str) -> PipelineStatus:
+            _ = request_id
+            raise NotImplementedError
+
+    store = Store()
+    set_status_store_factory(lambda: store)
+    set_reauth(_raise_sso)
+    try:
+        got = get_status_store()
+        assert got is store
+    finally:
+        set_reauth(None)
+        set_status_store_factory(None)
 
 
 async def test_get_k8s_rebuilds_after_sso_login_required() -> None:

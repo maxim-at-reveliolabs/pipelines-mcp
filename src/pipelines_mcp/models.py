@@ -106,3 +106,25 @@ class PipelineStart(BaseModel):
     namespace: str
     arguments: str
     pipeline_id: str
+
+
+class PipelineStepStatus(BaseModel):
+    """One pipeline service step. Spec is never a field."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    step_index: int
+    name: str
+    arguments: str
+
+
+class PipelineStatus(BaseModel):
+    """Pipeline service status for one request."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+    request_id: str
+    name: str
+    status: str
+    start_time: str
+    end_time: str
+    created_at: str
+    steps: tuple[PipelineStepStatus, ...]

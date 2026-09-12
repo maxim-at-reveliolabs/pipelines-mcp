@@ -16,6 +16,7 @@ from pipelines_mcp.errors import (
 from pipelines_mcp.k8s import K8s, K8sApiError, live_k8s
 from pipelines_mcp.logs import create_async_client
 from pipelines_mcp.object_store import LogStore, live_log_store
+from pipelines_mcp.pipeline_status import StatusStore, live_status_store
 from pipelines_mcp.redact import redact_text
 from pipelines_mcp.settings_sso import request_sso, sso_auth_expired
 
@@ -29,9 +30,11 @@ class _Slot:
     logs: httpx2.AsyncClient | None = None
     k8s: K8s | None = None
     object_store: LogStore | None = None
+    status_store: StatusStore | None = None
     logs_factory: Callable[[], httpx2.AsyncClient] | None = None
     k8s_factory: Callable[[], K8s] | None = None
     object_store_factory: Callable[[], LogStore] | None = None
+    status_store_factory: Callable[[], StatusStore] | None = None
     reauth: Callable[[], None] | None = None
 
 
@@ -54,6 +57,12 @@ def set_object_store_factory(factory: Callable[[], LogStore] | None) -> None:
     """Install the object-store factory."""
     _SLOT.object_store_factory = factory
     _SLOT.object_store = None
+
+
+def set_status_store_factory(factory: Callable[[], StatusStore] | None) -> None:
+    """Install the pipeline-service status factory."""
+    _SLOT.status_store_factory = factory
+    _SLOT.status_store = None
 
 
 def set_reauth(reauth: Callable[[], None] | None) -> None:
@@ -97,6 +106,14 @@ def get_object_store() -> LogStore:
         factory = _SLOT.object_store_factory or live_log_store
         _SLOT.object_store = factory()
     return _SLOT.object_store
+
+
+def get_status_store() -> StatusStore:
+    """Return the pipeline service store. Does not check SSO."""
+    if _SLOT.status_store is None:
+        factory = _SLOT.status_store_factory or live_status_store
+        _SLOT.status_store = factory()
+    return _SLOT.status_store
 
 
 @asynccontextmanager
