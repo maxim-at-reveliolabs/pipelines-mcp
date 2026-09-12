@@ -31,19 +31,17 @@ def _es_hit(line: str, stamp: str) -> dict[str, JsonValue]:
 async def _fetch(
     request: LogRequest,
     hits: list[dict[str, JsonValue]],
-) -> tuple[LogPage, list[dict[str, JsonValue]], list[str]]:
+) -> tuple[LogPage, list[dict[str, JsonValue]]]:
     bodies: list[dict[str, JsonValue]] = []
-    urls: list[str] = []
 
     def handler(http_request: httpx2.Request) -> httpx2.Response:
-        urls.append(str(http_request.url))
         bodies.append(_JSON_OBJECT.validate_json(http_request.content))
         return httpx2.Response(200, json={"hits": {"hits": hits}})
 
     transport = httpx2.MockTransport(handler)
     async with create_async_client(auth=_AUTH, transport=transport) as client:
         page = await fetch_logs(client, request)
-    return page, bodies, urls
+    return page, bodies
 
 
 def _query_string(body: dict[str, JsonValue]) -> dict[str, JsonValue]:
@@ -76,7 +74,7 @@ async def test_kind_filters_query_string(
     request = LogRequest(request_id="req-1", log_kind=kind)
 
     # When: the first tail page is fetched
-    page, bodies, _urls = await _fetch(request, [_es_hit(line, "t1")])
+    page, bodies = await _fetch(request, [_es_hit(line, "t1")])
 
     # Then: query_string matches that kind's field
     assert page.lines == (line,)
@@ -99,7 +97,7 @@ async def test_returns_whole_log_line_not_message() -> None:
     ]
 
     # When: logs are fetched
-    page, _bodies, _urls = await _fetch(request, hits)
+    page, _ = await _fetch(request, hits)
 
     # Then: the raw log line is returned and message-only hits are skipped
     assert page.lines == ("whole-line message=extracted",)
@@ -114,13 +112,13 @@ async def test_cursor_search_after_passthrough() -> None:
     ]
 
     # When: the first page is fetched, then a follow-up uses that cursor
-    first_page, first_bodies, _first_urls = await _fetch(request, first_hits)
+    first_page, first_bodies = await _fetch(request, first_hits)
     follow = LogRequest(
         request_id="r1",
         log_kind=LogKind.PIPELINE,
         cursor=first_page.cursor,
     )
-    second_page, second_bodies, _second_urls = await _fetch(
+    second_page, second_bodies = await _fetch(
         follow,
         [_es_hit("newest", "2026-01-01T00:00:03Z")],
     )
@@ -144,7 +142,7 @@ async def test_full_byte_cap() -> None:
     ]
 
     # When: the full page is fetched
-    page, bodies, _urls = await _fetch(request, hits)
+    page, bodies = await _fetch(request, hits)
 
     # Then: whole lines are dropped from the end and truncated is set
     assert page.lines == ("a" * 20000,)
@@ -157,7 +155,7 @@ async def test_empty_hits_returns_cursor_string() -> None:
     request = LogRequest(request_id="r1", log_kind=LogKind.PIPELINE)
 
     # When: the page is fetched
-    page, bodies, _urls = await _fetch(request, [])
+    page, bodies = await _fetch(request, [])
 
     # Then: lines are empty, truncated is false, and cursor is still a string
     assert page.lines == ()
@@ -186,7 +184,7 @@ async def test_invalid_cursor_raises() -> None:
 async def test_mismatched_cursor_raises() -> None:
     # Given: a valid tail cursor for service logs
     first = LogRequest(request_id="r1", log_kind=LogKind.SERVICE)
-    first_page, _, _ = await _fetch(first, [_es_hit("x", "t1")])
+    first_page, _ = await _fetch(first, [_es_hit("x", "t1")])
     mismatched = LogRequest(
         request_id="r1",
         log_kind=LogKind.PIPELINE,
@@ -205,7 +203,7 @@ async def test_tail_keeps_last_hundred_chronological_lines() -> None:
     hits = [_es_hit(f"line-{index}", f"t{index:03d}") for index in range(99, -1, -1)]
 
     # When: the first tail page is fetched
-    page, bodies, _urls = await _fetch(request, hits)
+    page, bodies = await _fetch(request, hits)
 
     # Then: lines are oldest to newest and the page is full
     assert page.lines == tuple(f"line-{index}" for index in range(100))
