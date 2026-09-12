@@ -8,7 +8,7 @@ Read-only MCP for pipeline jobs, pods, configs, and logs. Python 3.13, pydantic 
 
 | Task | File |
 |------|------|
-| New tool | `server.py` (decorator) + `server_ops.py` (call) |
+| New tool | `server.py` |
 | Job/pod I/O | `k8s.py` |
 | Logs | `logs.py` |
 | Start line keys | `pipeline_start.py` |

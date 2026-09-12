@@ -1,21 +1,39 @@
 """MCP server with the read-only pipeline tools. Does not call run()."""
 
-from typing import Final
-
 from mcp.server import MCPServer
 
-from pipelines_mcp import server_ops as ops
+from pipelines_mcp.errors import EmptyQueryError
+from pipelines_mcp.logs import LogRequest, fetch_logs
 from pipelines_mcp.models import (
     Job,
+    JobName,
     LogKind,
     LogPage,
     ObjectConfig,
     PipelineStart,
     Pod,
+    PodName,
+    Replica,
+    RequestId,
+    StepIndex,
+    job_name,
 )
-from pipelines_mcp.server_app import tool_boundary
+from pipelines_mcp.pipeline_start import parse_start
+from pipelines_mcp.server_app import (
+    get_k8s,
+    get_logs_client,
+    get_object_store,
+    tool_boundary,
+)
+from pipelines_mcp.timescaling_logs import TimescalingLogRequest, fetch_timescaling_logs
 
-_INSTRUCTIONS: Final = """
+mcp = MCPServer(
+    "pipelines-mcp",
+    description=(
+        "Read-only debug for pipeline jobs, pods, configs, and logs. Use a "
+        "request_id UUID, not a GitHub or Jenkins run id."
+    ),
+    instructions="""
 This MCP debugs a pipeline by request_id UUID. A GitHub Actions or Jenkins
 URL/run id is not a request_id. Passing it as request_id will fail or time out.
 
@@ -44,16 +62,23 @@ not give a request_id, GitHub URL, or Jenkins run.
 
 Cluster tools may start AWS login. If the tool says login started, retry the
 same request. Do not ask the human to open a URL unless the tool returned one.
-""".strip()
-
-mcp = MCPServer(
-    "pipelines-mcp",
-    description=(
-        "Read-only debug for pipeline jobs, pods, configs, and logs. Use a "
-        "request_id UUID, not a GitHub or Jenkins run id."
-    ),
-    instructions=_INSTRUCTIONS,
+""".strip(),
 )
+
+
+def _nonempty(raw: str, field: str) -> str:
+    stripped = raw.strip()
+    if stripped == "":
+        raise EmptyQueryError(field=field)
+    return stripped
+
+
+def _job_name(request_id: str, step_index: int, replica: int) -> JobName:
+    return job_name(
+        RequestId(_nonempty(request_id, "request_id")),
+        StepIndex(step_index),
+        Replica(replica),
+    )
 
 
 @mcp.tool(
@@ -73,7 +98,19 @@ async def list_pipeline_jobs(
 ) -> tuple[Job, ...]:
     """List jobs with optional status and request filters."""
     async with tool_boundary():
-        return await ops.list_jobs(status, request_id, limit)
+        stripped_id = "" if request_id is None else request_id.strip()
+        prefix = None if stripped_id == "" else f"pipelines-{stripped_id}"
+        stripped_status = "" if status is None else status.strip()
+        status_filter = (
+            "Active"
+            if stripped_status.lower() == "running"
+            else stripped_status or None
+        )
+        return await get_k8s().list_jobs(
+            status_filter,
+            prefix,
+            min(100, max(1, limit)),
+        )
 
 
 @mcp.tool(
@@ -86,7 +123,7 @@ async def list_pipeline_jobs(
 async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Job:
     """Get one job by request, step, and replica."""
     async with tool_boundary():
-        return await ops.get_job(request_id, step_index, replica)
+        return await get_k8s().get_job(_job_name(request_id, step_index, replica))
 
 
 @mcp.tool(
@@ -100,7 +137,7 @@ async def list_pipeline_pods(
 ) -> tuple[Pod, ...]:
     """List pods for one job."""
     async with tool_boundary():
-        return await ops.list_pods(request_id, step_index, replica)
+        return await get_k8s().list_pods(_job_name(request_id, step_index, replica))
 
 
 @mcp.tool(
@@ -115,21 +152,21 @@ async def get_pipeline_job_config(
 ) -> ObjectConfig:
     """Get the full redacted config for one job."""
     async with tool_boundary():
-        return await ops.job_config(request_id, step_index, replica)
+        return await get_k8s().job_config(_job_name(request_id, step_index, replica))
 
 
 @mcp.tool(description="Get one pod by pod_name from list_pipeline_pods.")
 async def get_pipeline_pod(pod_name: str) -> Pod:
     """Get one pod by name."""
     async with tool_boundary():
-        return await ops.get_pod(pod_name)
+        return await get_k8s().get_pod(PodName(_nonempty(pod_name, "pod_name")))
 
 
 @mcp.tool(description="Full YAML for one pod by pod_name. Secrets are redacted.")
 async def get_pipeline_pod_config(pod_name: str) -> ObjectConfig:
     """Get the full redacted config for one pod."""
     async with tool_boundary():
-        return await ops.pod_config(pod_name)
+        return await get_k8s().pod_config(PodName(_nonempty(pod_name, "pod_name")))
 
 
 @mcp.tool(
@@ -147,7 +184,15 @@ async def get_pipeline_log(
 ) -> LogPage:
     """Read pipeline logs for a request."""
     async with tool_boundary():
-        return await ops.read_log(request_id, LogKind.PIPELINE, cursor, full=full)
+        return await fetch_logs(
+            get_logs_client(),
+            LogRequest(
+                request_id=request_id,
+                log_kind=LogKind.PIPELINE,
+                cursor=cursor,
+                full=full,
+            ),
+        )
 
 
 @mcp.tool(
@@ -164,7 +209,15 @@ async def get_pipeline_service_log(
 ) -> LogPage:
     """Read service logs for a request."""
     async with tool_boundary():
-        return await ops.read_log(request_id, LogKind.SERVICE, cursor, full=full)
+        return await fetch_logs(
+            get_logs_client(),
+            LogRequest(
+                request_id=request_id,
+                log_kind=LogKind.SERVICE,
+                cursor=cursor,
+                full=full,
+            ),
+        )
 
 
 @mcp.tool(
@@ -177,7 +230,16 @@ async def get_pipeline_service_log(
 async def get_pipeline_start(request_id: str) -> PipelineStart:
     """Read start-line keys for a request."""
     async with tool_boundary():
-        return await ops.read_start(request_id)
+        page = await fetch_logs(
+            get_logs_client(),
+            LogRequest(
+                request_id=request_id,
+                log_kind=LogKind.SERVICE,
+                full=True,
+                size=20,
+            ),
+        )
+        return parse_start(page.lines)
 
 
 @mcp.tool(
@@ -198,6 +260,13 @@ async def get_timescaling_log(
 ) -> LogPage:
     """Read timescaling model logs for a run."""
     async with tool_boundary():
-        return await ops.read_timescaling_log(
-            client, batchtime, comptype, cursor, full=full
+        return await fetch_timescaling_logs(
+            get_object_store(),
+            TimescalingLogRequest(
+                client=client,
+                batchtime=batchtime,
+                comptype=comptype,
+                cursor=cursor,
+                full=full,
+            ),
         )
