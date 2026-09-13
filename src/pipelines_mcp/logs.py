@@ -270,10 +270,10 @@ def nonempty(raw: str, field: str) -> str:
 
 
 def path_segment(raw: str, field: str) -> str:
-    """Strip a path part. Empty or slash fails."""
+    """Strip a path part. Empty fails. A slash is invalid."""
     stripped = nonempty(raw, field)
     if "/" in stripped:
-        raise DomainError(reason=f"empty {field}")
+        raise DomainError(reason=f"invalid {field}")
     return stripped
 
 

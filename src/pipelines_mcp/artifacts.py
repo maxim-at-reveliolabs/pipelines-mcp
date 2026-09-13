@@ -97,7 +97,7 @@ def object_text(store: ObjectStore, prefix: str, key: str) -> ArtifactText:
     """Return a short redacted text head of one object under prefix."""
     stripped = nonempty(key, "key")
     if stripped.startswith("/") or ".." in stripped or "" in stripped.split("/"):
-        raise DomainError(reason="empty key")
+        raise DomainError(reason="invalid key")
     if stripped.lower().endswith(".parquet"):
         raise DomainError(reason="parquet is not text")
     raw = store.get_bytes(

@@ -21,12 +21,12 @@ _REQUEST: str = "11111111-1111-1111-1111-111111111111"
 _UNLOADS: str = f"202608/rust-unloads/{_REQUEST}/"
 _JSONL: str = "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
 _BAD_SEGMENTS: tuple[tuple[str, str, str, str], ...] = (
-    ("  ", _REQUEST, "reference", "batchtime"),
-    ("2026/08", _REQUEST, "reference", "batchtime"),
-    ("202608", "  ", "reference", "request_id"),
-    ("202608", "aa/bb", "reference", "request_id"),
-    ("202608", _REQUEST, "  ", "folder"),
-    ("202608", _REQUEST, "a/b", "folder"),
+    ("  ", _REQUEST, "reference", "empty batchtime"),
+    ("2026/08", _REQUEST, "reference", "invalid batchtime"),
+    ("202608", "  ", "reference", "empty request_id"),
+    ("202608", "aa/bb", "reference", "invalid request_id"),
+    ("202608", _REQUEST, "  ", "empty folder"),
+    ("202608", _REQUEST, "a/b", "invalid folder"),
 )
 
 
@@ -86,16 +86,18 @@ def test_empty_prefixes_return_empty_tuples() -> None:
 
 
 @pytest.mark.parametrize(
-    ("batchtime", "request_id", "field"),
+    ("batchtime", "request_id", "reason"),
     [
-        ("  ", _REQUEST, "batchtime"),
-        ("2026/08", _REQUEST, "batchtime"),
-        ("202608", "  ", "request_id"),
-        ("202608", "aa/bb", "request_id"),
+        ("  ", _REQUEST, "empty batchtime"),
+        ("2026/08", _REQUEST, "invalid batchtime"),
+        ("202608", "  ", "empty request_id"),
+        ("202608", "aa/bb", "invalid request_id"),
     ],
 )
-def test_bad_path_segment_raises(batchtime: str, request_id: str, field: str) -> None:
-    with pytest.raises(DomainError, match=f"empty {field}"):
+def test_bad_path_segment_raises(
+    batchtime: str, request_id: str, reason: str
+) -> None:
+    with pytest.raises(DomainError, match=reason):
         _ = list_lifecycle_artifacts(FakeStore(keys=()), batchtime, request_id)
 
 
@@ -140,13 +142,13 @@ def test_skips_the_unload_prefix_key() -> None:
 
 
 @pytest.mark.parametrize(
-    ("batchtime", "request_id", "folder", "field"),
+    ("batchtime", "request_id", "folder", "reason"),
     _BAD_SEGMENTS,
 )
 def test_bad_file_path_segment_raises(
-    batchtime: str, request_id: str, folder: str, field: str
+    batchtime: str, request_id: str, folder: str, reason: str
 ) -> None:
-    with pytest.raises(DomainError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=reason):
         _ = list_lifecycle_artifact_files(
             FakeStore(keys=()), batchtime, request_id, folder
         )
@@ -192,13 +194,13 @@ def test_reads_json_text_for_relative_key_with_slashes() -> None:
 
 
 @pytest.mark.parametrize(
-    ("batchtime", "request_id", "folder", "field"),
+    ("batchtime", "request_id", "folder", "reason"),
     _BAD_SEGMENTS,
 )
 def test_bad_text_path_segment_raises(
-    batchtime: str, request_id: str, folder: str, field: str
+    batchtime: str, request_id: str, folder: str, reason: str
 ) -> None:
-    with pytest.raises(DomainError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=reason):
         _ = get_lifecycle_artifact_text(
             FakeStore(keys=()),
             LifecycleArtifactTextRequest(
@@ -221,7 +223,10 @@ def test_reads_shared_jsonl_text() -> None:
     assert store.reads == [f"{_JSONL}company.jsonl"]
 
 
-@pytest.mark.parametrize("batchtime", ["  ", "2026/08"])
-def test_bad_jsonl_batchtime_raises(batchtime: str) -> None:
-    with pytest.raises(DomainError, match="empty batchtime"):
+@pytest.mark.parametrize(
+    ("batchtime", "reason"),
+    [("  ", "empty batchtime"), ("2026/08", "invalid batchtime")],
+)
+def test_bad_jsonl_batchtime_raises(batchtime: str, reason: str) -> None:
+    with pytest.raises(DomainError, match=reason):
         _ = get_lifecycle_jsonl_text(BytesStore(objects={}), batchtime, "company.jsonl")

@@ -17,6 +17,15 @@ from pipelines_mcp.models import (
     ArtifactText,
 )
 
+_BAD_FOLDER_SEGMENTS: tuple[tuple[str, str, str, str, str], ...] = (
+    ("  ", "202608", "dashboard", "timescaling", "empty client"),
+    ("a/b", "202608", "dashboard", "timescaling", "invalid client"),
+    ("acme", "x/y", "dashboard", "timescaling", "invalid batchtime"),
+    ("acme", "202608", "x/y", "timescaling", "invalid comptype"),
+    ("acme", "202608", "dashboard", "  ", "empty folder"),
+    ("acme", "202608", "dashboard", "a/b", "invalid folder"),
+)
+
 
 @dataclass(slots=True)
 class FakeStore:
@@ -76,18 +85,18 @@ def test_empty_prefix_returns_no_folders() -> None:
 
 
 @pytest.mark.parametrize(
-    ("client", "batchtime", "comptype", "field"),
+    ("client", "batchtime", "comptype", "reason"),
     [
-        ("  ", "202608", "dashboard", "client"),
-        ("a/b", "202608", "dashboard", "client"),
-        ("acme", "x/y", "dashboard", "batchtime"),
-        ("acme", "202608", "x/y", "comptype"),
+        ("  ", "202608", "dashboard", "empty client"),
+        ("a/b", "202608", "dashboard", "invalid client"),
+        ("acme", "x/y", "dashboard", "invalid batchtime"),
+        ("acme", "202608", "x/y", "invalid comptype"),
     ],
 )
 def test_bad_path_segment_raises(
-    client: str, batchtime: str, comptype: str, field: str
+    client: str, batchtime: str, comptype: str, reason: str
 ) -> None:
-    with pytest.raises(DomainError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=reason):
         _ = list_artifacts(FakeStore(keys=()), client, batchtime, comptype)
 
 
@@ -134,20 +143,13 @@ def test_skips_the_prefix_key() -> None:
 
 
 @pytest.mark.parametrize(
-    ("client", "batchtime", "comptype", "folder", "field"),
-    [
-        ("  ", "202608", "dashboard", "timescaling", "client"),
-        ("a/b", "202608", "dashboard", "timescaling", "client"),
-        ("acme", "x/y", "dashboard", "timescaling", "batchtime"),
-        ("acme", "202608", "x/y", "timescaling", "comptype"),
-        ("acme", "202608", "dashboard", "  ", "folder"),
-        ("acme", "202608", "dashboard", "a/b", "folder"),
-    ],
+    ("client", "batchtime", "comptype", "folder", "reason"),
+    _BAD_FOLDER_SEGMENTS,
 )
 def test_bad_file_path_segment_raises(
-    client: str, batchtime: str, comptype: str, folder: str, field: str
+    client: str, batchtime: str, comptype: str, folder: str, reason: str
 ) -> None:
-    with pytest.raises(DomainError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=reason):
         _ = list_artifact_files(
             FakeStore(keys=()), client, batchtime, comptype, folder
         )
@@ -280,20 +282,13 @@ def test_missing_object_raises_domain_error() -> None:
 
 
 @pytest.mark.parametrize(
-    ("client", "batchtime", "comptype", "folder", "field"),
-    [
-        ("  ", "202608", "dashboard", "timescaling", "client"),
-        ("a/b", "202608", "dashboard", "timescaling", "client"),
-        ("acme", "x/y", "dashboard", "timescaling", "batchtime"),
-        ("acme", "202608", "x/y", "timescaling", "comptype"),
-        ("acme", "202608", "dashboard", "  ", "folder"),
-        ("acme", "202608", "dashboard", "a/b", "folder"),
-    ],
+    ("client", "batchtime", "comptype", "folder", "reason"),
+    _BAD_FOLDER_SEGMENTS,
 )
 def test_bad_text_path_segment_raises(
-    client: str, batchtime: str, comptype: str, folder: str, field: str
+    client: str, batchtime: str, comptype: str, folder: str, reason: str
 ) -> None:
-    with pytest.raises(DomainError, match=f"empty {field}"):
+    with pytest.raises(DomainError, match=reason):
         _ = get_artifact_text(
             BytesStore(objects={}),
             ArtifactTextRequest(
@@ -307,9 +302,16 @@ def test_bad_text_path_segment_raises(
 
 
 @pytest.mark.parametrize(
-    "key",
-    ["", "  ", "/model_input/part-0.json", "foo/../bar.json", "foo//bar.json", "foo/"],
+    ("key", "reason"),
+    [
+        ("", "empty key"),
+        ("  ", "empty key"),
+        ("/model_input/part-0.json", "invalid key"),
+        ("foo/../bar.json", "invalid key"),
+        ("foo//bar.json", "invalid key"),
+        ("foo/", "invalid key"),
+    ],
 )
-def test_bad_key_raises(key: str) -> None:
-    with pytest.raises(DomainError, match="empty key"):
+def test_bad_key_raises(key: str, reason: str) -> None:
+    with pytest.raises(DomainError, match=reason):
         _ = get_artifact_text(BytesStore(objects={}), _text_request(key=key))

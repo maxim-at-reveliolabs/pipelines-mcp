@@ -140,10 +140,13 @@ def test_empty_hits_returns_note() -> None:
     assert page.cursor != ""
 
 
-@pytest.mark.parametrize("client", ["  ", "a/b"])
-def test_bad_client_raises(client: str) -> None:
+@pytest.mark.parametrize(
+    ("client", "reason"),
+    [("  ", "empty client"), ("a/b", "invalid client")],
+)
+def test_bad_client_raises(client: str, reason: str) -> None:
     store = FakeStore(objects={})
-    with pytest.raises(DomainError, match="empty client"):
+    with pytest.raises(DomainError, match=reason):
         _ = fetch_timescaling_logs(store, _request(client=client))
 
 

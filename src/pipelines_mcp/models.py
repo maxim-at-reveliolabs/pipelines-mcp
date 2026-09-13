@@ -81,7 +81,10 @@ class Pod(BaseModel):
 
 
 class LogPage(BaseModel):
-    """Capped log page with an opaque cursor."""
+    """Capped log page with an opaque cursor.
+
+    Reuse cursor only on the same log kind and mode.
+    """
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     lines: tuple[str, ...]
@@ -99,7 +102,10 @@ class ObjectConfig(BaseModel):
 
 
 class PipelineStart(BaseModel):
-    """Keys from the service line that starts the job."""
+    """Keys from the service line that starts the job.
+
+    arguments stays the original JSON string.
+    """
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     timestamp: str
@@ -170,7 +176,7 @@ class PipelineStepRun(BaseModel):
 
 
 class PipelineStepRuns(BaseModel):
-    """Per-step run status for one request."""
+    """Per-step run status inferred from service logs for one request."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     request_id: str
@@ -202,7 +208,7 @@ class ArtifactFiles(BaseModel):
 
 
 class ArtifactText(BaseModel):
-    """Short text head of one rust artifact object."""
+    """Short text head of one json, jsonl, or log object."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     prefix: str

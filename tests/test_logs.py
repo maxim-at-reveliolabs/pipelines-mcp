@@ -11,6 +11,7 @@ from pipelines_mcp.logs import (
     LogRequest,
     create_logs_client,
     fetch_logs,
+    path_segment,
 )
 from pipelines_mcp.models import LogKind, LogPage
 from pipelines_mcp.settings import BasicAuth
@@ -213,3 +214,12 @@ async def test_empty_query_raises() -> None:
     request = LogRequest(match="r1", log_kind=LogKind.WORKER, query="")
     with pytest.raises(DomainError, match="empty query"):
         _ = await _fetch(request, [])
+
+
+@pytest.mark.parametrize(
+    ("raw", "reason"),
+    [("  ", "empty client"), ("a/b", "invalid client")],
+)
+def test_path_segment_rejects_blank_and_slash(raw: str, reason: str) -> None:
+    with pytest.raises(DomainError, match=reason):
+        _ = path_segment(raw, "client")

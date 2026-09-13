@@ -71,6 +71,7 @@ pipeline id.
 
 If the user already gave a request_id UUID, call get_pipeline_status
 next. Then get_pipeline_step_status to see which step failed.
+get_pipeline_step_status reads service logs, not the status API.
 Overall status stays on get_pipeline_status. Then get_pipeline_log
 and get_pipeline_service_log.
 When get_pipeline_status is pending and there is no cluster job, call
@@ -96,8 +97,8 @@ After list_pipeline_artifacts, pass a folder name to
 list_pipeline_artifact_files to see files inside it (model_input vs
 model_output, parquet parts, log dirs).
 get_pipeline_artifact_text reads a short head of one small json/jsonl/log
-object. Pass the relative key from list_pipeline_artifact_files. Do not
-use it for parquet.
+object. Pass the relative key from list_pipeline_artifact_files.
+Parquet returns an error.
 list_pipeline_lifecycle_artifacts lists unload folders and shared jsonl
 names. Pass batchtime and the request_id UUID. Rust job artifacts stay
 on list_pipeline_artifacts.
@@ -105,9 +106,9 @@ After list_pipeline_lifecycle_artifacts, pass a folder name to
 list_pipeline_lifecycle_artifact_files to see files inside it.
 get_pipeline_lifecycle_artifact_text reads a short head of one small
 json/jsonl/log object. Pass the relative key from
-list_pipeline_lifecycle_artifact_files. Do not use it for parquet.
+list_pipeline_lifecycle_artifact_files. Parquet returns an error.
 get_pipeline_lifecycle_jsonl_text reads a short head of one shared jsonl
-name from list_pipeline_lifecycle_artifacts. Do not use it for parquet.
+name from list_pipeline_lifecycle_artifacts. Parquet returns an error.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
 Use the log tools instead.
@@ -220,8 +221,9 @@ async def get_pipeline_images() -> PipelineImages:
 async def get_pipeline_step_status(request_id: str) -> PipelineStepRuns:
     """Per-step run status for a request_id UUID.
 
-    Use after get_pipeline_status to see which step failed. Overall
-    status stays on get_pipeline_status. Empty logs return no steps.
+    Use after get_pipeline_status to see which step failed. This reads
+    service logs, not the status API. Overall status stays on
+    get_pipeline_status. Empty logs return no steps.
     """
     stripped = nonempty(request_id, "request_id")
     page = await fetch_logs(
@@ -235,8 +237,8 @@ async def get_pipeline_step_status(request_id: str) -> PipelineStepRuns:
 async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Job:
     """Get one job by request_id UUID, step_index, and replica (usually 0).
 
-    Use only if you need job status; start with get_pipeline_log. If the job is
-    gone, use the log tools.
+    Use only if you need job status. Start with get_pipeline_status. If the
+    job is gone, use the log tools.
     """
     return await run_sync(get_k8s().get_job, _job_name(request_id, step_index, replica))
 
@@ -294,7 +296,9 @@ async def get_pipeline_log(
     """Worker logs for a request_id UUID.
 
     Empty until the worker is running. Default is the last 100 lines plus a
-    cursor. Pass cursor to get only new lines. full=true still caps size.
+    cursor. Pass cursor to get only new lines. Reuse a cursor only on the
+    same log tool and full setting. A mismatched cursor fails. full=true
+    still caps size.
     """
     return await _es_log(request_id, LogKind.WORKER, cursor, full=full)
 
@@ -488,7 +492,7 @@ async def get_pipeline_artifact_text(
     """Short text head of one rust artifact object.
 
     After list_pipeline_artifact_files, pass a relative key to read a short
-    head of one small json, jsonl, or log object. Do not use it for parquet.
+    head of one small json, jsonl, or log object. Parquet returns an error.
     """
     return await run_sync(
         get_artifact_text,
@@ -559,8 +563,8 @@ async def get_pipeline_lifecycle_artifact_text(
     """Short text head of one lifecycle unload object.
 
     After list_pipeline_lifecycle_artifact_files, pass a relative key to
-    read a short head of one small json, jsonl, or log object. Do not use
-    it for parquet.
+    read a short head of one small json, jsonl, or log object. Parquet
+    returns an error.
     """
     return await run_sync(
         get_lifecycle_artifact_text,
@@ -582,7 +586,7 @@ async def get_pipeline_lifecycle_jsonl_text(
     """Short text head of one shared jsonl object.
 
     After list_pipeline_lifecycle_artifacts, pass a jsonl name such as
-    company.jsonl. Do not use it for parquet.
+    company.jsonl. Parquet returns an error.
     """
     return await run_sync(
         get_lifecycle_jsonl_text,
