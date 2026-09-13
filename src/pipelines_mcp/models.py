@@ -217,13 +217,15 @@ class ArtifactText(BaseModel):
 
 
 class LifecycleArtifacts(BaseModel):
-    """Unload folders and shared jsonl names for one lifecycle run."""
+    """Unload folders and shared jsonl and user_pdfs names for one lifecycle run."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     unloads_prefix: str
     folders: tuple[ArtifactFolder, ...]
     jsonl_prefix: str
     jsonl_names: tuple[str, ...]
+    user_pdfs_prefix: str
+    user_pdfs_names: tuple[str, ...]
 
 
 class PipelineConfigCheck(BaseModel):

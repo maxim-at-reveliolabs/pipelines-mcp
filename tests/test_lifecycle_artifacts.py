@@ -4,9 +4,11 @@ import pytest
 
 from pipelines_mcp.errors import DomainError
 from pipelines_mcp.lifecycle_artifacts import (
+    JSONL_FOLDER,
+    USER_PDFS_FOLDER,
     LifecycleArtifactTextRequest,
     get_lifecycle_artifact_text,
-    get_lifecycle_jsonl_text,
+    get_lifecycle_globals_text,
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
 )
@@ -20,6 +22,7 @@ from pipelines_mcp.models import (
 _REQUEST: str = "11111111-1111-1111-1111-111111111111"
 _UNLOADS: str = f"202608/rust-unloads/{_REQUEST}/"
 _JSONL: str = "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
+_PDFS: str = "202608/input_pipelines/main/final/globals_rs/user_pdfs/"
 _BAD_SEGMENTS: tuple[tuple[str, str, str, str], ...] = (
     ("  ", _REQUEST, "reference", "empty batchtime"),
     ("2026/08", _REQUEST, "reference", "invalid batchtime"),
@@ -57,6 +60,8 @@ def test_lists_unload_folders_and_shared_jsonl_names() -> None:
             f"{_JSONL}company.jsonl",
             f"{_JSONL}region.jsonl",
             "202609/input_pipelines/main/final/globals_rs/timescaling_v4/country.jsonl",
+            f"{_PDFS}user.jsonl",
+            "202609/input_pipelines/main/final/globals_rs/user_pdfs/other.jsonl",
         )
     )
     listing = list_lifecycle_artifacts(store, "202608", _REQUEST)
@@ -71,8 +76,10 @@ def test_lists_unload_folders_and_shared_jsonl_names() -> None:
         ),
         jsonl_prefix=_JSONL,
         jsonl_names=("company.jsonl", "region.jsonl"),
+        user_pdfs_prefix=_PDFS,
+        user_pdfs_names=("user.jsonl",),
     )
-    assert store.prefixes == [_UNLOADS, _JSONL]
+    assert store.prefixes == [_UNLOADS, _JSONL, _PDFS]
 
 
 def test_empty_prefixes_return_empty_tuples() -> None:
@@ -82,6 +89,8 @@ def test_empty_prefixes_return_empty_tuples() -> None:
         folders=(),
         jsonl_prefix=_JSONL,
         jsonl_names=(),
+        user_pdfs_prefix=_PDFS,
+        user_pdfs_names=(),
     )
 
 
@@ -212,21 +221,32 @@ def test_bad_text_path_segment_raises(
         )
 
 
-def test_reads_shared_jsonl_text() -> None:
-    store = BytesStore(objects={f"{_JSONL}company.jsonl": b'{"entity": "acme"}\n'})
-    result = get_lifecycle_jsonl_text(store, "202608", "company.jsonl")
+@pytest.mark.parametrize(
+    ("folder", "key", "body", "prefix"),
+    [
+        (JSONL_FOLDER, "company.jsonl", b'{"entity": "acme"}\n', _JSONL),
+        (USER_PDFS_FOLDER, "user.jsonl", b'{"pdf": 1}\n', _PDFS),
+    ],
+)
+def test_reads_globals_text(
+    folder: str, key: str, body: bytes, prefix: str
+) -> None:
+    store = BytesStore(objects={f"{prefix}{key}": body})
+    result = get_lifecycle_globals_text(store, "202608", folder, key)
     assert result == ArtifactText(
-        prefix=_JSONL,
-        key="company.jsonl",
-        text='{"entity": "acme"}\n',
+        prefix=prefix,
+        key=key,
+        text=body.decode(),
     )
-    assert store.reads == [f"{_JSONL}company.jsonl"]
+    assert store.reads == [f"{prefix}{key}"]
 
 
 @pytest.mark.parametrize(
     ("batchtime", "reason"),
     [("  ", "empty batchtime"), ("2026/08", "invalid batchtime")],
 )
-def test_bad_jsonl_batchtime_raises(batchtime: str, reason: str) -> None:
+def test_bad_globals_batchtime_raises(batchtime: str, reason: str) -> None:
     with pytest.raises(DomainError, match=reason):
-        _ = get_lifecycle_jsonl_text(BytesStore(objects={}), batchtime, "company.jsonl")
+        _ = get_lifecycle_globals_text(
+            BytesStore(objects={}), batchtime, JSONL_FOLDER, "company.jsonl"
+        )

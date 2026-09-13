@@ -1,4 +1,4 @@
-"""Lifecycle unload folders, files, jsonl names, and short text heads."""
+"""Lifecycle unload folders, files, jsonl and user_pdfs names, and short text heads."""
 
 from __future__ import annotations
 
@@ -17,6 +17,9 @@ from pipelines_mcp.models import ArtifactFiles, ArtifactText, LifecycleArtifacts
 if TYPE_CHECKING:
     from pipelines_mcp.object_store import ObjectStore
 
+JSONL_FOLDER = "timescaling_v4"
+USER_PDFS_FOLDER = "user_pdfs"
+
 
 def _unloads_prefix(batchtime: str, request_id: str) -> str:
     return (
@@ -25,11 +28,22 @@ def _unloads_prefix(batchtime: str, request_id: str) -> str:
     )
 
 
-def _jsonl_prefix(batchtime: str) -> str:
+def _globals_prefix(batchtime: str, folder: str) -> str:
     return (
         f"{path_segment(batchtime, 'batchtime')}/"
-        "input_pipelines/main/final/globals_rs/timescaling_v4/"
+        "input_pipelines/main/final/globals_rs/"
+        f"{path_segment(folder, 'folder')}/"
     )
+
+
+def _child_names(store: ObjectStore, prefix: str) -> tuple[str, ...]:
+    names: set[str] = set()
+    for key in store.list_keys(prefix):
+        rest = key.removeprefix(prefix)
+        if rest == "":
+            continue
+        names.add(rest.partition("/")[0])
+    return tuple(sorted(names))
 
 
 def list_lifecycle_artifacts(
@@ -37,21 +51,17 @@ def list_lifecycle_artifacts(
     batchtime: str,
     request_id: str,
 ) -> LifecycleArtifacts:
-    """List unload folders and shared jsonl names for one lifecycle run."""
+    """List unload folders and shared jsonl and user_pdfs names."""
     unloads_prefix = _unloads_prefix(batchtime, request_id)
-    jsonl_prefix = _jsonl_prefix(batchtime)
-    folders = child_folders(store, unloads_prefix)
-    names: set[str] = set()
-    for key in store.list_keys(jsonl_prefix):
-        rest = key.removeprefix(jsonl_prefix)
-        if rest == "":
-            continue
-        names.add(rest.partition("/")[0])
+    jsonl_prefix = _globals_prefix(batchtime, JSONL_FOLDER)
+    user_pdfs_prefix = _globals_prefix(batchtime, USER_PDFS_FOLDER)
     return LifecycleArtifacts(
         unloads_prefix=unloads_prefix,
-        folders=folders,
+        folders=child_folders(store, unloads_prefix),
         jsonl_prefix=jsonl_prefix,
-        jsonl_names=tuple(sorted(names)),
+        jsonl_names=_child_names(store, jsonl_prefix),
+        user_pdfs_prefix=user_pdfs_prefix,
+        user_pdfs_names=_child_names(store, user_pdfs_prefix),
     )
 
 
@@ -91,10 +101,11 @@ def get_lifecycle_artifact_text(
     )
 
 
-def get_lifecycle_jsonl_text(
+def get_lifecycle_globals_text(
     store: ObjectStore,
     batchtime: str,
+    folder: str,
     key: str,
 ) -> ArtifactText:
-    """Return a short redacted text head of one shared jsonl object."""
-    return object_text(store, _jsonl_prefix(batchtime), key)
+    """Return a short redacted text head of one globals_rs object."""
+    return object_text(store, _globals_prefix(batchtime, folder), key)

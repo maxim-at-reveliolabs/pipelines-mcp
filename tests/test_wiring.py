@@ -575,6 +575,10 @@ async def test_list_pipeline_lifecycle_artifacts_tool_reads_store() -> None:
                 "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
             ):
                 return (f"{prefix}company.jsonl",)
+            if prefix == (
+                "202608/input_pipelines/main/final/globals_rs/user_pdfs/"
+            ):
+                return (f"{prefix}user.jsonl",)
             return ()
 
         def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
@@ -596,6 +600,10 @@ async def test_list_pipeline_lifecycle_artifacts_tool_reads_store() -> None:
         "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
     )
     assert value["jsonl_names"] == ["company.jsonl"]
+    assert value["user_pdfs_prefix"] == (
+        "202608/input_pipelines/main/final/globals_rs/user_pdfs/"
+    )
+    assert value["user_pdfs_names"] == ["user.jsonl"]
 
 
 async def test_list_pipeline_lifecycle_artifact_files_tool_reads_store() -> None:
@@ -667,32 +675,45 @@ async def test_get_pipeline_lifecycle_artifact_text_tool_reads_store() -> None:
     assert value["text"] == '{"ok": true}\n'
 
 
-async def test_get_pipeline_lifecycle_jsonl_text_tool_reads_store() -> None:
+@pytest.mark.parametrize(
+    ("tool", "key", "body", "prefix"),
+    [
+        (
+            "get_pipeline_lifecycle_jsonl_text",
+            "company.jsonl",
+            b'{"entity": "acme"}\n',
+            "202608/input_pipelines/main/final/globals_rs/timescaling_v4/",
+        ),
+        (
+            "get_pipeline_lifecycle_user_pdfs_text",
+            "user.jsonl",
+            b'{"pdf": 1}\n',
+            "202608/input_pipelines/main/final/globals_rs/user_pdfs/",
+        ),
+    ],
+)
+async def test_get_pipeline_lifecycle_globals_text_tool_reads_store(
+    tool: str, key: str, body: bytes, prefix: str
+) -> None:
+    expected = f"{prefix}{key}"
+
     @dataclass(frozen=True, slots=True)
     class Store:
-        def list_keys(self, prefix: str) -> tuple[str, ...]:
-            _ = prefix
+        def list_keys(self, listed: str) -> tuple[str, ...]:
+            _ = listed
             return ()
 
-        def get_bytes(self, key: str, max_bytes: int | None = None) -> bytes:
+        def get_bytes(self, object_key: str, max_bytes: int | None = None) -> bytes:
             _ = max_bytes
-            assert key == (
-                "202608/input_pipelines/main/final/globals_rs/"
-                "timescaling_v4/company.jsonl"
-            )
-            return b'{"entity": "acme"}\n'
+            assert object_key == expected
+            return body
 
     set_object_store_factory(Store)
     try:
-        result = await mcp.call_tool(
-            "get_pipeline_lifecycle_jsonl_text",
-            {"batchtime": "202608", "key": "company.jsonl"},
-        )
+        result = await mcp.call_tool(tool, {"batchtime": "202608", "key": key})
     finally:
         set_object_store_factory(None)
     value = _page_from_tool(result)
-    assert value["prefix"] == (
-        "202608/input_pipelines/main/final/globals_rs/timescaling_v4/"
-    )
-    assert value["key"] == "company.jsonl"
-    assert value["text"] == '{"entity": "acme"}\n'
+    assert value["prefix"] == prefix
+    assert value["key"] == key
+    assert value["text"] == body.decode()

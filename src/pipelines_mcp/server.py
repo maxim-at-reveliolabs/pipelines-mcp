@@ -14,9 +14,11 @@ from pipelines_mcp.artifacts import (
     list_artifacts,
 )
 from pipelines_mcp.lifecycle_artifacts import (
+    JSONL_FOLDER,
+    USER_PDFS_FOLDER,
     LifecycleArtifactTextRequest,
     get_lifecycle_artifact_text,
-    get_lifecycle_jsonl_text,
+    get_lifecycle_globals_text,
     list_lifecycle_artifact_files,
     list_lifecycle_artifacts,
 )
@@ -108,6 +110,8 @@ get_pipeline_lifecycle_artifact_text reads a short head of one small
 json/jsonl/log object. Pass the relative key from
 list_pipeline_lifecycle_artifact_files. Parquet returns an error.
 get_pipeline_lifecycle_jsonl_text reads a short head of one shared jsonl
+name from list_pipeline_lifecycle_artifacts. Parquet returns an error.
+get_pipeline_lifecycle_user_pdfs_text reads a short head of one user_pdfs
 name from list_pipeline_lifecycle_artifacts. Parquet returns an error.
 get_pipeline_job / list_pipeline_pods only if you need job or pod state.
 If the job is gone from the cluster, that is expected after it finishes.
@@ -519,9 +523,10 @@ async def list_pipeline_lifecycle_artifacts(
     dashboard-input, dashboard-timescaling, breakdowns, scraping-lags.
     Also lists names under the shared jsonl prefix
     {batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/.
-    Typical names: company.jsonl, region.jsonl. That jsonl prefix is per
-    batchtime, not per request. Rust job artifacts stay on
-    list_pipeline_artifacts. Does not return file contents.
+    Typical names: company.jsonl, region.jsonl. Also lists names under
+    {batchtime}/input_pipelines/main/final/globals_rs/user_pdfs/. Those
+    prefixes are per batchtime, not per request. Rust job artifacts stay
+    on list_pipeline_artifacts. Does not return file contents.
     """
     return await run_sync(
         list_lifecycle_artifacts,
@@ -589,9 +594,29 @@ async def get_pipeline_lifecycle_jsonl_text(
     company.jsonl. Parquet returns an error.
     """
     return await run_sync(
-        get_lifecycle_jsonl_text,
+        get_lifecycle_globals_text,
         get_object_store(),
         batchtime,
+        JSONL_FOLDER,
+        key,
+    )
+
+
+@_tool
+async def get_pipeline_lifecycle_user_pdfs_text(
+    batchtime: str,
+    key: str,
+) -> ArtifactText:
+    """Short text head of one user_pdfs object.
+
+    After list_pipeline_lifecycle_artifacts, pass a user_pdfs name.
+    Parquet returns an error.
+    """
+    return await run_sync(
+        get_lifecycle_globals_text,
+        get_object_store(),
+        batchtime,
+        USER_PDFS_FOLDER,
         key,
     )
 
