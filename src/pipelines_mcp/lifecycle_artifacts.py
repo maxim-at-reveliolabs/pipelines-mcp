@@ -1,4 +1,4 @@
-"""Lifecycle unload folders, files, jsonl and user_pdfs names, and short text heads."""
+"""Lifecycle unload folders, files, shared jsonl names, and short text heads."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def list_lifecycle_artifacts(
     batchtime: str,
     request_id: str,
 ) -> LifecycleArtifacts:
-    """List unload folders and shared jsonl and user_pdfs names."""
+    """Unload folders plus shared jsonl and user_pdfs names."""
     unloads_prefix = _unloads_prefix(batchtime, request_id)
     jsonl_prefix = _globals_prefix(batchtime, JSONL_FOLDER)
     user_pdfs_prefix = _globals_prefix(batchtime, USER_PDFS_FOLDER)
@@ -71,7 +71,7 @@ def list_lifecycle_artifact_files(
     request_id: str,
     folder: str,
 ) -> ArtifactFiles:
-    """List object keys under one lifecycle unload folder."""
+    """Object keys under one lifecycle unload folder."""
     prefix = folder_prefix(_unloads_prefix(batchtime, request_id), folder)
     return ArtifactFiles(prefix=prefix, keys=child_keys(store, prefix))
 
@@ -90,7 +90,7 @@ def get_lifecycle_artifact_text(
     store: ObjectStore,
     request: LifecycleArtifactTextRequest,
 ) -> ArtifactText:
-    """Return a short redacted text head of one lifecycle unload object."""
+    """Short redacted text head of one lifecycle unload object."""
     return object_text(
         store,
         folder_prefix(
@@ -107,5 +107,5 @@ def get_lifecycle_globals_text(
     folder: str,
     key: str,
 ) -> ArtifactText:
-    """Return a short redacted text head of one globals_rs object."""
+    """Short redacted text head of one globals_rs object."""
     return object_text(store, _globals_prefix(batchtime, folder), key)

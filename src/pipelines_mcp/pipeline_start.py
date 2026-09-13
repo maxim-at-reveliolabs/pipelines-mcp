@@ -12,7 +12,7 @@ _START_FIELDS: Final = TypeAdapter(dict[str, str])
 
 
 def parse_start(lines: Sequence[str]) -> PipelineStart:
-    """Return start-line keys. arguments stays the original JSON string."""
+    """Start-line keys. arguments stays the original JSON."""
     for line in lines:
         if "[k8s-client] starting pipeline" not in line:
             continue

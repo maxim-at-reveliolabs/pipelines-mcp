@@ -1,4 +1,4 @@
-"""Pipeline service queue from GetPipelineQueue."""
+"""Service queue from GetPipelineQueue."""
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportAttributeAccessIssue=false, reportPrivateUsage=false, reportUnknownLambdaType=false
 

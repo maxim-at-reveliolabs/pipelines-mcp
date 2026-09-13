@@ -1,4 +1,4 @@
-"""Log pages, shared cursor helpers, and the Elasticsearch HTTP client factory."""
+"""Log pages, cursor helpers, and the Elasticsearch client."""
 
 import base64
 import binascii
@@ -227,7 +227,7 @@ def _cursor_for(ctx: _PageCtx, sa: list[str | int | float] | None) -> str:
 def _build_page(hits: tuple[_Hit, ...], ctx: _PageCtx) -> LogPage:
     match ctx.request.log_kind:
         case LogKind.WORKER:
-            empty = "No lines. Worker logs stay empty until a pod is running."
+            empty = "No lines. Empty until a pod is running."
         case LogKind.SERVICE:
             empty = "No lines."
     if not hits:

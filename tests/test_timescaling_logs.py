@@ -134,9 +134,7 @@ def test_empty_hits_returns_note() -> None:
     page = fetch_timescaling_logs(store, _request())
     assert page.lines == ()
     assert page.truncated is False
-    assert page.note == (
-        "No lines. Timescaling model logs stay empty until the model writes them."
-    )
+    assert page.note == "No lines. Empty until the model writes logs."
     assert page.cursor != ""
 
 

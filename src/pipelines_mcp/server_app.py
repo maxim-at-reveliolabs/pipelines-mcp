@@ -163,7 +163,7 @@ async def tool_boundary() -> AsyncGenerator[None]:
             (
                 f"{exc.entity} is gone from the cluster.",
                 "Finished jobs and pods are removed.",
-                "Use get_pipeline_log instead of job or pod state.",
+                "Use get_pipeline_log.",
             )
         )
         raise ToolError(redact_text(gone)) from exc

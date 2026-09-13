@@ -1,4 +1,4 @@
-"""Pipeline service status from GetPipeline."""
+"""Service status from GetPipeline."""
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportAttributeAccessIssue=false
 

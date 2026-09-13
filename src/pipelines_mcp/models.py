@@ -36,7 +36,7 @@ class LogKind(StrEnum):
 
 @unique
 class ContainerState(StrEnum):
-    """Container state taken from which k8s sub-object is set."""
+    """Container state from which k8s sub-object is set."""
 
     WAITING = "waiting"
     RUNNING = "running"
@@ -44,7 +44,7 @@ class ContainerState(StrEnum):
 
 
 class Job(BaseModel):
-    """One cluster job. Spec is never a field."""
+    """Cluster job. No spec."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     name: str
@@ -81,10 +81,7 @@ class Pod(BaseModel):
 
 
 class LogPage(BaseModel):
-    """Capped log page with an opaque cursor.
-
-    Reuse cursor only on the same log kind and mode.
-    """
+    """Capped log page. Reuse cursor only on the same kind and mode."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     lines: tuple[str, ...]
@@ -102,10 +99,7 @@ class ObjectConfig(BaseModel):
 
 
 class PipelineStart(BaseModel):
-    """Keys from the service line that starts the job.
-
-    arguments stays the original JSON string.
-    """
+    """Keys from the service start line. arguments stays the original JSON."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     timestamp: str
@@ -118,7 +112,7 @@ class PipelineStart(BaseModel):
 
 
 class PipelineStep(BaseModel):
-    """One pipeline service step with name and arguments."""
+    """One service step. arguments is the step JSON."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     step_index: int
@@ -127,7 +121,7 @@ class PipelineStep(BaseModel):
 
 
 class PipelineStatus(BaseModel):
-    """Pipeline service status for one request."""
+    """Service status for one request."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     request_id: str
@@ -140,7 +134,7 @@ class PipelineStatus(BaseModel):
 
 
 class PipelineQueueItem(BaseModel):
-    """One waiting run in pipeline service order."""
+    """One waiting run in service order."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     request_id: str
@@ -149,7 +143,7 @@ class PipelineQueueItem(BaseModel):
 
 
 class PipelineImage(BaseModel):
-    """One pipeline service image version."""
+    """One service image version."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     name: str
@@ -176,7 +170,7 @@ class PipelineStepRun(BaseModel):
 
 
 class PipelineStepRuns(BaseModel):
-    """Per-step run status inferred from service logs for one request."""
+    """Per-step run status from service logs."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     request_id: str
@@ -184,7 +178,7 @@ class PipelineStepRuns(BaseModel):
 
 
 class ArtifactFolder(BaseModel):
-    """One immediate child folder and how many objects it holds."""
+    """One child folder and its object count."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     name: str
@@ -217,7 +211,7 @@ class ArtifactText(BaseModel):
 
 
 class LifecycleArtifacts(BaseModel):
-    """Unload folders and shared jsonl and user_pdfs names for one lifecycle run."""
+    """Unload folders plus shared jsonl and user_pdfs names."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     unloads_prefix: str
@@ -229,7 +223,7 @@ class LifecycleArtifacts(BaseModel):
 
 
 class PipelineConfigCheck(BaseModel):
-    """Result of checking pipeline arguments JSON."""
+    """Result of checking rust job arguments JSON."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
     valid: bool

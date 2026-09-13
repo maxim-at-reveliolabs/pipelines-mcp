@@ -62,77 +62,46 @@ mcp = MCPServer(
         "request_id UUID, not a GitHub or Jenkins run id."
     ),
     instructions="""
-This MCP debugs a pipeline by request_id UUID. A GitHub Actions or Jenkins
-URL/run id is not a request_id. Passing it as request_id will fail or time out.
+Debug one pipeline by request_id UUID. A GitHub or Jenkins URL/run id is not
+a request_id; using it fails or times out.
 
-If the user gives a GitHub Actions or Jenkins URL or run id: fetch that CI log
-first (outside this MCP), extract the request_id UUID, then call
-get_pipeline_log. Never call list_pipeline_jobs for that. Typical UUID lines:
-Fast pipeline <uuid> ... failed; StartMultipartPipeline; pipeline-id;
-pipeline id.
+CI URL/run: fetch that CI log outside this MCP, extract the UUID, then
+get_pipeline_log. Never list_pipeline_jobs. UUID lines: Fast pipeline <uuid>
+... failed; StartMultipartPipeline; pipeline-id; pipeline id.
 
-If the user already gave a request_id UUID, call get_pipeline_status
-next. After get_pipeline_status, if the rust job started, call
-get_pipeline_start, then get_pipeline_images. Compare
-get_pipeline_start.image_name (for example pipelines-rust:v1.1.1)
-with get_pipeline_images.rust.version (for example v1.1.16). If they
-differ, say both versions in the first failure summary: "This run
-used rust image v1.1.1. The current rust image is v1.1.16." If they
-match, mention the image only if the user asks. Do not treat an old
-image as the cause unless logs or config check show that. Still
-report the version gap. Keep the real failure reason first.
-get_pipeline_images does not start a pipeline. lifecycle may be
-null. Do not invent a current timescaling image. If the job JSON has
-timescaling.image_override, you may mention that tag, but do not
-call it "latest" unless a tool gives a current timescaling version.
-Then get_pipeline_step_status to see which step failed.
-get_pipeline_step_status reads service logs, not the status API.
-Overall status stays on get_pipeline_status. Then get_pipeline_log
-and get_pipeline_service_log.
-When get_pipeline_status is pending and there is no cluster job, call
-get_pipeline_queue to see if the run is waiting in the queue.
-When a run has many steps, use get_pipeline_step_log instead of mixed
-get_pipeline_log. Search with search_pipeline_step_log instead of mixed
-search_pipeline_log.
-search_pipeline_log and search_pipeline_service_log find matching lines
-in those logs. query is required.
-get_pipeline_start returns the keys from the service line that starts the
-job. arguments stays the original JSON string. Call validate_pipeline_config
-only on rust job JSON (it has dataset). Do not call it on lifecycle unload
-JSON (no dataset). It does not start a pipeline.
-If the worker says the timescaling cluster failed: get_pipeline_job_config
-(step_index and replica are usually 0) for client, batchtime, and comptype,
-then get_timescaling_log.
-list_pipeline_artifacts lists artifact folders for one rust job after the
-pod is gone. Pass client, batchtime, and comptype from
-get_pipeline_job_config.
-After list_pipeline_artifacts, pass a folder name to
-list_pipeline_artifact_files to see files inside it (model_input vs
-model_output, parquet parts, log dirs).
-get_pipeline_artifact_text reads a short head of one small json/jsonl/log
-object. Pass the relative key from list_pipeline_artifact_files.
-Parquet returns an error.
-list_pipeline_lifecycle_artifacts lists unload folders and shared jsonl
-names. Pass batchtime and the request_id UUID. Rust job artifacts stay
-on list_pipeline_artifacts.
-After list_pipeline_lifecycle_artifacts, pass a folder name to
-list_pipeline_lifecycle_artifact_files to see files inside it.
-get_pipeline_lifecycle_artifact_text reads a short head of one small
-json/jsonl/log object. Pass the relative key from
-list_pipeline_lifecycle_artifact_files. Parquet returns an error.
-get_pipeline_lifecycle_jsonl_text reads a short head of one shared jsonl
-name from list_pipeline_lifecycle_artifacts. Parquet returns an error.
-get_pipeline_lifecycle_user_pdfs_text reads a short head of one user_pdfs
-name from list_pipeline_lifecycle_artifacts. Parquet returns an error.
-get_pipeline_job / list_pipeline_pods only if you need job or pod state.
-If the job is gone from the cluster, that is expected after it finishes.
-Use the log tools instead.
+UUID given: get_pipeline_status first.
+If the rust job started, get_pipeline_start then get_pipeline_images.
+Compare image_name (pipelines-rust:v1.1.1) to rust.version (v1.1.16). If they
+differ, put both in the first failure summary: "This run used rust image
+v1.1.1. The current rust image is v1.1.16." If they match, mention the image
+only if asked. Report a version gap, but do not blame an old image unless logs
+or config check show that. Keep the real failure first. get_pipeline_images
+does not start a pipeline. lifecycle may be null. Do not invent a current
+timescaling image. timescaling.image_override is a tag, not "latest", unless
+a tool gives a current timescaling version.
+Then get_pipeline_step_status (service logs, not the status API) to see which
+step failed. Overall status stays on get_pipeline_status. Then worker and
+service logs. Many steps: use step log and search tools, not the mixed ones.
+Search query is required. Pending with no cluster job: get_pipeline_queue.
+get_pipeline_start keeps arguments as the original JSON.
+validate_pipeline_config only on rust job JSON (has dataset), never lifecycle
+unload JSON. It does not start a pipeline.
+Timescaling cluster failed: get_pipeline_job_config (step_index and replica
+usually 0) for client, batchtime, and comptype, then get_timescaling_log.
+Rust artifacts after the pod is gone: client, batchtime, and comptype from
+job config, then list_pipeline_artifacts, list_pipeline_artifact_files, and
+get_pipeline_artifact_text. Parquet is not text.
+Lifecycle unloads: list_pipeline_lifecycle_artifacts with batchtime and
+request_id, then the matching files and text tools. Shared jsonl and
+user_pdfs names are per batchtime. Rust artifacts stay on
+list_pipeline_artifacts.
+Job and pod tools only for live cluster state. Gone after finish is expected;
+use logs.
+list_pipeline_jobs only to browse running jobs when there is no request_id or
+CI run.
 
-list_pipeline_jobs is only to browse currently running jobs when the user did
-not give a request_id, GitHub URL, or Jenkins run.
-
-Cluster tools may start AWS login. If the tool says login started, retry the
-same request. Do not ask the human to open a URL unless the tool returned one.
+Cluster tools may start AWS login. If login started, retry the same request.
+Do not ask the human to open a URL unless the tool returned one.
 """.strip(),
 )
 
@@ -177,13 +146,11 @@ async def list_pipeline_jobs(
     request_id: str | None = None,
     limit: int = 50,
 ) -> tuple[Job, ...]:
-    """List currently running or recent jobs.
+    """Browse running or recent jobs.
 
-    Do not use this when the user gave a request_id UUID, GitHub URL, or Jenkins
-    run; fetch the CI log if needed, then call get_pipeline_log. Optional
-    filters: status (Active, Complete, Failed, Pending, or running),
-    request_id, limit (default 50, max 100). Job names are
-    pipelines-{request_id}-{step_index}-{replica}.
+    Use only when there is no request_id or CI run. Optional: status (Active,
+    Complete, Failed, Pending, or running), request_id, limit (1-100, default
+    50). Names: pipelines-{request_id}-{step_index}-{replica}.
     """
     stripped_id = "" if request_id is None else request_id.strip()
     prefix = None if stripped_id == "" else f"pipelines-{stripped_id}"
@@ -201,12 +168,11 @@ async def list_pipeline_jobs(
 
 @_tool
 async def get_pipeline_status(request_id: str) -> PipelineStatus:
-    """Pipeline service status and steps for a request_id UUID.
+    """Service status and steps for a request_id UUID.
 
-    Use this first when the user gave a request_id. Jobs may already be gone.
-    Status is pending, running, error, complete, cancelled, or split. Steps
-    are in pipeline service order as step_index. arguments is the step JSON
-    string.
+    Call first. Jobs may already be gone. Status: pending, running, error,
+    complete, cancelled, or split. steps are in service order as step_index.
+    arguments is the step JSON.
     """
     return await run_sync(
         get_status_store().get, nonempty(request_id, "request_id")
@@ -215,30 +181,29 @@ async def get_pipeline_status(request_id: str) -> PipelineStatus:
 
 @_tool
 async def get_pipeline_queue() -> tuple[PipelineQueueItem, ...]:
-    """Pending and waiting runs in pipeline service order.
+    """Pending and waiting runs in service order.
 
-    Use when get_pipeline_status is pending and there is no cluster job.
-    Empty when nothing is waiting.
+    Use when status is pending and there is no cluster job. Empty if nothing
+    is waiting.
     """
     return await run_sync(get_queue_store().get)
 
 
 @_tool
 async def get_pipeline_images() -> PipelineImages:
-    """Current rust and lifecycle image versions from pipeline service metadata.
+    """Current rust and lifecycle image versions.
 
-    Does not start a pipeline.
+    Does not start a pipeline. lifecycle may be null.
     """
     return await run_sync(get_images_store().get)
 
 
 @_tool
 async def get_pipeline_step_status(request_id: str) -> PipelineStepRuns:
-    """Per-step run status for a request_id UUID.
+    """Per-step run status from service logs.
 
-    Use after get_pipeline_status to see which step failed. This reads
-    service logs, not the status API. Overall status stays on
-    get_pipeline_status. Empty logs return no steps.
+    Use after get_pipeline_status to see which step failed. Overall status
+    stays on get_pipeline_status. Empty logs return no steps.
     """
     stripped = nonempty(request_id, "request_id")
     page = await fetch_logs(
@@ -250,10 +215,9 @@ async def get_pipeline_step_status(request_id: str) -> PipelineStepRuns:
 
 @_tool
 async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Job:
-    """Get one job by request_id UUID, step_index, and replica (usually 0).
+    """One job by request_id, step_index, and replica (usually 0).
 
-    Use only if you need job status. Start with get_pipeline_status. If the
-    job is gone, use the log tools.
+    Use only for live job status. If the job is gone, use logs.
     """
     return await run_sync(get_k8s().get_job, _job_name(request_id, step_index, replica))
 
@@ -262,10 +226,9 @@ async def get_pipeline_job(request_id: str, step_index: int, replica: int) -> Jo
 async def list_pipeline_pods(
     request_id: str, step_index: int, replica: int
 ) -> tuple[Pod, ...]:
-    """List live pods for one job.
+    """Live pods for one job.
 
-    Empty if they are already gone. Use for pod state; use log tools for the
-    failure reason.
+    Empty if they are already gone. Use logs for the failure reason.
     """
     return await run_sync(
         get_k8s().list_pods, _job_name(request_id, step_index, replica)
@@ -276,11 +239,10 @@ async def list_pipeline_pods(
 async def get_pipeline_job_config(
     request_id: str, step_index: int, replica: int
 ) -> ObjectConfig:
-    """Full YAML for one job by request_id, step_index, and replica.
+    """Redacted YAML for one job.
 
-    Secrets are redacted. Use to read client, batchtime, and comptype before
-    get_timescaling_log or list_pipeline_artifacts. If the job is gone, use
-    the log tools.
+    Use for client, batchtime, and comptype before timescaling logs or rust
+    artifacts. If the job is gone, use logs.
     """
     return await run_sync(
         get_k8s().job_config, _job_name(request_id, step_index, replica)
@@ -289,13 +251,13 @@ async def get_pipeline_job_config(
 
 @_tool
 async def get_pipeline_pod(pod_name: str) -> Pod:
-    """Get one pod by pod_name from list_pipeline_pods."""
+    """One pod by pod_name from list_pipeline_pods."""
     return await run_sync(get_k8s().get_pod, nonempty(pod_name, "pod_name"))
 
 
 @_tool
 async def get_pipeline_pod_config(pod_name: str) -> ObjectConfig:
-    """Full YAML for one pod by pod_name. Secrets are redacted."""
+    """Redacted YAML for one pod."""
     return await run_sync(
         get_k8s().pod_config, nonempty(pod_name, "pod_name")
     )
@@ -310,10 +272,9 @@ async def get_pipeline_log(
 ) -> LogPage:
     """Worker logs for a request_id UUID.
 
-    Empty until the worker is running. Default is the last 100 lines plus a
-    cursor. Pass cursor to get only new lines. Reuse a cursor only on the
-    same log tool and full setting. A mismatched cursor fails. full=true
-    still caps size.
+    Empty until a pod is running. Default: last 100 lines plus a cursor. Pass
+    cursor for new lines only. Reuse a cursor only on this tool and the same
+    full setting. Mismatch fails. full=true still caps size.
     """
     return await _es_log(request_id, LogKind.WORKER, cursor, full=full)
 
@@ -329,8 +290,8 @@ async def get_pipeline_step_log(
 ) -> LogPage:
     """Worker logs for one job.
 
-    Use this when a run has many steps. get_pipeline_log mixes every step.
-    Same cursor rules as get_pipeline_log.
+    Use when a run has many steps. get_pipeline_log mixes every step. Same
+    cursor rules as get_pipeline_log.
     """
     return await _es_log(
         _job_name(request_id, step_index, replica),
@@ -347,7 +308,7 @@ async def get_pipeline_service_log(
     *,
     full: bool = False,
 ) -> LogPage:
-    """Service logs for the same request_id UUID.
+    """Service logs for a request_id UUID.
 
     Use with worker logs. Same cursor rules as get_pipeline_log.
     """
@@ -362,9 +323,9 @@ async def search_pipeline_log(
     *,
     full: bool = False,
 ) -> LogPage:
-    """Find matching worker log lines for a request_id UUID.
+    """Matching worker log lines for a request_id UUID.
 
-    query is required and must not be empty. Same cursor rules as get_pipeline_log.
+    query is required. Same cursor rules as get_pipeline_log.
     """
     return await _es_log(request_id, LogKind.WORKER, cursor, full=full, query=query)
 
@@ -379,10 +340,10 @@ async def search_pipeline_step_log(  # noqa: PLR0913  # MCP tool args
     *,
     full: bool = False,
 ) -> LogPage:
-    """Find matching worker log lines for one job.
+    """Matching worker log lines for one job.
 
-    Use this when a run has many steps. search_pipeline_log mixes every step.
-    query is required and must not be empty. Same cursor rules as get_pipeline_log.
+    Use when a run has many steps. search_pipeline_log mixes every step.
+    query is required. Same cursor rules as get_pipeline_log.
     """
     return await _es_log(
         _job_name(request_id, step_index, replica),
@@ -401,19 +362,19 @@ async def search_pipeline_service_log(
     *,
     full: bool = False,
 ) -> LogPage:
-    """Find matching service log lines for a request_id UUID.
+    """Matching service log lines for a request_id UUID.
 
-    query is required and must not be empty. Same cursor rules as get_pipeline_log.
+    query is required. Same cursor rules as get_pipeline_log.
     """
     return await _es_log(request_id, LogKind.SERVICE, cursor, full=full, query=query)
 
 
 @_tool
 async def get_pipeline_start(request_id: str) -> PipelineStart:
-    """Keys from the service line that starts the job for a request_id UUID.
+    """Keys from the service line that starts the job.
 
-    arguments stays the original JSON string. Use when the job is gone and you
-    need those keys. Retry if the line is not there yet.
+    arguments stays the original JSON. Use when the job is gone and you need
+    those keys. Retry if the line is not there yet.
     """
     page = await fetch_logs(
         get_logs_client(),
@@ -459,10 +420,9 @@ async def list_pipeline_artifacts(
 ) -> ArtifactListing:
     """Artifact folders for one rust job.
 
-    Pass client, batchtime, and comptype from get_pipeline_job_config.
-    Groups objects under {batchtime}/{client}/{comptype}/ by the first folder
-    name. Typical folders: dataset_unique, timescaling, output, mappings_input.
-    Does not return file contents.
+    Pass client, batchtime, and comptype from get_pipeline_job_config. Groups
+    {batchtime}/{client}/{comptype}/ by first folder. Typical: dataset_unique,
+    timescaling, output, mappings_input. No file contents.
     """
     return await run_sync(
         list_artifacts,
@@ -480,11 +440,11 @@ async def list_pipeline_artifact_files(
     comptype: str,
     folder: str,
 ) -> ArtifactFiles:
-    """Object keys inside one rust artifact folder.
+    """Object keys in one rust artifact folder.
 
-    After list_pipeline_artifacts, pass a folder name to see files inside it
-    (model_input vs model_output, parquet parts, log dirs). Keys are relative
-    to {batchtime}/{client}/{comptype}/{folder}/. Does not return file contents.
+    After list_pipeline_artifacts, pass a folder name (model_input vs
+    model_output, parquet parts, log dirs). Keys are relative to
+    {batchtime}/{client}/{comptype}/{folder}/. No file contents.
     """
     return await run_sync(
         list_artifact_files,
@@ -506,8 +466,8 @@ async def get_pipeline_artifact_text(
 ) -> ArtifactText:
     """Short text head of one rust artifact object.
 
-    After list_pipeline_artifact_files, pass a relative key to read a short
-    head of one small json, jsonl, or log object. Parquet returns an error.
+    After list_pipeline_artifact_files, pass a relative key. json/jsonl/log
+    only. Parquet returns an error.
     """
     return await run_sync(
         get_artifact_text,
@@ -527,17 +487,16 @@ async def list_pipeline_lifecycle_artifacts(
     batchtime: str,
     request_id: str,
 ) -> LifecycleArtifacts:
-    """Unload folders and shared jsonl names for one lifecycle run.
+    """Unload folders and shared jsonl and user_pdfs names.
 
-    Pass batchtime and the request_id UUID. Lists first-level folders under
-    {batchtime}/rust-unloads/{request_id}/. Typical folders: reference,
-    dashboard-input, dashboard-timescaling, breakdowns, scraping-lags.
-    Also lists names under the shared jsonl prefix
-    {batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/.
-    Typical names: company.jsonl, region.jsonl. Also lists names under
-    {batchtime}/input_pipelines/main/final/globals_rs/user_pdfs/. Those
-    prefixes are per batchtime, not per request. Rust job artifacts stay
-    on list_pipeline_artifacts. Does not return file contents.
+    Pass batchtime and request_id. Folders under
+    {batchtime}/rust-unloads/{request_id}/. Typical: reference,
+    dashboard-input, dashboard-timescaling, breakdowns, scraping-lags. Also
+    lists names under
+    {batchtime}/input_pipelines/main/final/globals_rs/timescaling_v4/ and
+    {batchtime}/input_pipelines/main/final/globals_rs/user_pdfs/. Typical
+    jsonl: company.jsonl, region.jsonl. Those prefixes are per batchtime.
+    Rust artifacts stay on list_pipeline_artifacts. No file contents.
     """
     return await run_sync(
         list_lifecycle_artifacts,
@@ -553,11 +512,10 @@ async def list_pipeline_lifecycle_artifact_files(
     request_id: str,
     folder: str,
 ) -> ArtifactFiles:
-    """Object keys inside one lifecycle unload folder.
+    """Object keys in one lifecycle unload folder.
 
-    After list_pipeline_lifecycle_artifacts, pass a folder name to see files
-    inside it. Keys are relative to
-    {batchtime}/rust-unloads/{request_id}/{folder}/. Does not return file
+    After list_pipeline_lifecycle_artifacts, pass a folder name. Keys are
+    relative to {batchtime}/rust-unloads/{request_id}/{folder}/. No file
     contents.
     """
     return await run_sync(
@@ -578,9 +536,8 @@ async def get_pipeline_lifecycle_artifact_text(
 ) -> ArtifactText:
     """Short text head of one lifecycle unload object.
 
-    After list_pipeline_lifecycle_artifact_files, pass a relative key to
-    read a short head of one small json, jsonl, or log object. Parquet
-    returns an error.
+    After list_pipeline_lifecycle_artifact_files, pass a relative key.
+    json/jsonl/log only. Parquet returns an error.
     """
     return await run_sync(
         get_lifecycle_artifact_text,
@@ -620,8 +577,8 @@ async def get_pipeline_lifecycle_user_pdfs_text(
 ) -> ArtifactText:
     """Short text head of one user_pdfs object.
 
-    After list_pipeline_lifecycle_artifacts, pass a user_pdfs name.
-    Parquet returns an error.
+    After list_pipeline_lifecycle_artifacts, pass a user_pdfs name. Parquet
+    returns an error.
     """
     return await run_sync(
         get_lifecycle_globals_text,
@@ -636,8 +593,7 @@ async def get_pipeline_lifecycle_user_pdfs_text(
 async def validate_pipeline_config(arguments: str) -> PipelineConfigCheck:
     """Check rust job arguments JSON.
 
-    Pass arguments from a status step that has dataset. Do not pass lifecycle
-    unload JSON. Does not start a pipeline. Bad JSON returns valid false and a
-    short error.
+    Pass step arguments that include dataset. Not for lifecycle unload JSON.
+    Does not start a pipeline. Bad JSON: valid false plus a short error.
     """
     return await run_sync(check_pipeline_config, nonempty(arguments, "arguments"))

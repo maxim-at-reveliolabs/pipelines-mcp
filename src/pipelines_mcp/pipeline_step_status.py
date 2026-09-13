@@ -17,10 +17,10 @@ _INDEX_STATUS: Final = re.compile(r"Index: (\d+), replica: (\d+), status: (\S+)"
 
 
 def parse_step_status(request_id: str, lines: Sequence[str]) -> PipelineStepRuns:
-    """Infer per-replica status from pipeline service log lines.
+    """Per-replica status from service log lines.
 
     Empty logs return no steps. A starting-pipeline line is running. An
-    Index/replica/status line sets that status and wins over start.
+    Index/replica/status line wins over start.
     """
     runs: dict[tuple[int, int], PipelineStepRun] = {}
     for line in lines:

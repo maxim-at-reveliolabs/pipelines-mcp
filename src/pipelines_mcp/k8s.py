@@ -1,4 +1,4 @@
-"""Read-only job and pod access over an injected kubernetes API."""
+"""Read-only job and pod access. API is injected."""
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportArgumentType=false
 

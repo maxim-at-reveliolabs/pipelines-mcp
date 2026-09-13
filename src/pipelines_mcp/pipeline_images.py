@@ -1,4 +1,4 @@
-"""Current rust and lifecycle image versions from pipeline service metadata."""
+"""Current rust and lifecycle image versions from service metadata."""
 
 # pyright: reportArgumentType=false
 

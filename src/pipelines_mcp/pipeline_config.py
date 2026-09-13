@@ -1,4 +1,4 @@
-"""Check pipeline arguments JSON."""
+"""Check rust job arguments JSON."""
 
 # pyright: reportUnknownVariableType=false
 
@@ -17,7 +17,7 @@ type JsonValue = (
 
 
 def check_pipeline_config(arguments: str) -> PipelineConfigCheck:
-    """Parse arguments JSON and check it. Does not start a pipeline."""
+    """Check arguments JSON. Does not start a pipeline."""
     try:
         config = TypeAdapter(dict[str, JsonValue]).validate_json(arguments)
     except ValidationError as exc:

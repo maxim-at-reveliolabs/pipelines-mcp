@@ -1,4 +1,4 @@
-"""Artifact folders, keys, and short text heads from an injected object store."""
+"""Rust artifact folders, keys, and short text heads. Store is injected."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def list_artifacts(
     batchtime: str,
     comptype: str,
 ) -> ArtifactListing:
-    """List immediate child folders under one rust job prefix."""
+    """Immediate child folders under one rust job prefix."""
     prefix = _artifact_prefix(client, batchtime, comptype)
     return ArtifactListing(prefix=prefix, folders=child_folders(store, prefix))
 
@@ -77,7 +77,7 @@ def list_artifact_files(
     comptype: str,
     folder: str,
 ) -> ArtifactFiles:
-    """List object keys under one rust artifact folder."""
+    """Object keys under one rust artifact folder."""
     prefix = folder_prefix(_artifact_prefix(client, batchtime, comptype), folder)
     return ArtifactFiles(prefix=prefix, keys=child_keys(store, prefix))
 
@@ -94,7 +94,7 @@ class ArtifactTextRequest:
 
 
 def object_text(store: ObjectStore, prefix: str, key: str) -> ArtifactText:
-    """Return a short redacted text head of one object under prefix."""
+    """Short redacted text head of one object under prefix."""
     stripped = nonempty(key, "key")
     if stripped.startswith("/") or ".." in stripped or "" in stripped.split("/"):
         raise DomainError(reason="invalid key")
@@ -120,7 +120,7 @@ def object_text(store: ObjectStore, prefix: str, key: str) -> ArtifactText:
 
 
 def get_artifact_text(store: ObjectStore, request: ArtifactTextRequest) -> ArtifactText:
-    """Return a short redacted text head of one rust artifact object."""
+    """Short redacted text head of one rust artifact object."""
     return object_text(
         store,
         folder_prefix(

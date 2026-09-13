@@ -1,4 +1,4 @@
-"""Timescaling model log pages from an injected object store."""
+"""Timescaling model log pages. Store is injected."""
 
 from __future__ import annotations
 
@@ -132,10 +132,7 @@ def _build_page(
             lines=(),
             cursor=_cursor_for(request, mode, prior_sa),
             truncated=False,
-            note=(
-                "No lines. Timescaling model logs stay empty until "
-                "the model writes them."
-            ),
+            note="No lines. Empty until the model writes logs.",
         )
     if dropped and not drop_front:
         start = 0 if prior_sa is None else prior_sa
