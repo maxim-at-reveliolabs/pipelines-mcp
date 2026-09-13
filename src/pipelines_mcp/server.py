@@ -72,14 +72,25 @@ Fast pipeline <uuid> ... failed; StartMultipartPipeline; pipeline-id;
 pipeline id.
 
 If the user already gave a request_id UUID, call get_pipeline_status
-next. Then get_pipeline_step_status to see which step failed.
+next. After get_pipeline_status, if the rust job started, call
+get_pipeline_start, then get_pipeline_images. Compare
+get_pipeline_start.image_name (for example pipelines-rust:v1.1.1)
+with get_pipeline_images.rust.version (for example v1.1.16). If they
+differ, say both versions in the first failure summary: "This run
+used rust image v1.1.1. The current rust image is v1.1.16." If they
+match, mention the image only if the user asks. Do not treat an old
+image as the cause unless logs or config check show that. Still
+report the version gap. Keep the real failure reason first.
+get_pipeline_images does not start a pipeline. lifecycle may be
+null. Do not invent a current timescaling image. If the job JSON has
+timescaling.image_override, you may mention that tag, but do not
+call it "latest" unless a tool gives a current timescaling version.
+Then get_pipeline_step_status to see which step failed.
 get_pipeline_step_status reads service logs, not the status API.
 Overall status stays on get_pipeline_status. Then get_pipeline_log
 and get_pipeline_service_log.
 When get_pipeline_status is pending and there is no cluster job, call
 get_pipeline_queue to see if the run is waiting in the queue.
-get_pipeline_images returns current rust and lifecycle image versions
-from pipeline service metadata. It does not start a pipeline.
 When a run has many steps, use get_pipeline_step_log instead of mixed
 get_pipeline_log. Search with search_pipeline_step_log instead of mixed
 search_pipeline_log.
